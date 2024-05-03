@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ../app:/usr/src/
+      - ../app:/src/
     ports:
       - "6000:6000"
     deploy:

@@ -1,6 +1,6 @@
 FROM pytorch/torchserve:latest-gpu
-COPY ../app /usr/src
+COPY ../app /src
 
 RUN pip install mecab-python3
 
-WORKDIR /usr/src
+WORKDIR /src
