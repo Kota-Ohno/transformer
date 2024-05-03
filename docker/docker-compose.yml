@@ -1,0 +1,17 @@
+services:
+  transformer:
+    container_name: transformer
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ../app:/usr/src/
+    ports:
+      - "6000:6000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: [gpu]
+    shm_size: "256mb"
+    tty: true
