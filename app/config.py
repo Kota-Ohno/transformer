@@ -7,7 +7,9 @@ NUM_LAYERS = 6
 D_FF = 2048  # フィードフォワードネットワークの内部層の次元
 DROPOUT_RATE = 0.1
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-NUM_EPOCHS = 10  # トレーニングを10エポック実行するための設定
+NUM_EPOCHS = 10000  # トレーニングを実行するための設定
+PATIENCE = 5
+WARMUP_STEPS = 4000
 
 # 定数の定義
 BOS_TOKEN = "<s>"
@@ -16,3 +18,6 @@ PAD_TOKEN = "<pad>"
 UNK_TOKEN = "<unk>"
 
 MODEL_PATH = "model.save"
+
+TRANSLATION_SOURCE = "en_US"
+TRANSLATION_DESTINATION = "ja_JP"

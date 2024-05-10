@@ -1,6 +1,7 @@
 import torch
 from data import load_data, create_data_loader, get_vocab
-from model import Encoder, Decoder
+from encoder import Encoder
+from decoder import Decoder
 from train import criterion
 from config import MODEL_PATH, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE
 

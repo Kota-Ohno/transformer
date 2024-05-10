@@ -1,26 +1,28 @@
 import torch
 import torch.utils.data
 from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
 from config import MAX_SEQ_LENGTH, BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, UNK_TOKEN
 import collections
-import MeCab
+
+import itertools
+
+import spacy
 
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
-    def __init__(self, X, y, transform=None):
+    def __init__(self, X, Y, transform=None):
         self.X = X
-        self.y = y
+        self.Y = Y
         self.transform = transform
 
     def __len__(self):
         return len(self.X)
 
     def __getitem__(self, idx):
-        x, y = self.X[idx], self.y[idx]
+        x, Y = self.X[idx], self.Y[idx]
         if self.transform:
             x = self.transform(x)
-        return x, y
+        return x, Y
 
 # データの読み込みと前処理
 def preprocess_data(data):
@@ -35,45 +37,85 @@ def load_data(data_path):
     return data
 
 # トレーニングセットとテストセットに分割
-def split_data(data, test_size=0.2, random_state=42):
-    X_train, X_test, y_train, y_test = train_test_split(data.X, data.y, test_size=test_size, random_state=random_state)
-    train_dataset = MyDataset(X_train, y_train)
-    test_dataset = MyDataset(X_test, y_test)
-    return train_dataset, test_dataset
+def set_data(X, y):
+    dataset = MyDataset(X, y)
+    return dataset
 
-# バッチを作成するためのコラテーション関数
+def pad_inner_seq(seq, pad_token, max_length):
+    # 既存のシーケンスの長さが max_length 未満の場合、不足分を pad_token で埋める
+    padded_seq = seq + [pad_token] * (max_length - len(seq))
+    return padded_seq
+
+
 def collate_fn(batch):
-    X, y = zip(*batch)
-    X_padded = [pad_seq(x, PAD_TOKEN) for x in X]
-    y_padded = [pad_seq(y, PAD_TOKEN) for y in y]
-    return torch.tensor(X_padded, dtype=torch.long), torch.tensor(y_padded, dtype=torch.long)
+    X, Y = zip(*batch)
+    
+    # データセット全体で最長のシーケンス長を取得
+    max_length_X = max(len(x) for x in X)
+    max_length_Y = max(len(y) for y in Y)
+    max_length = max(max_length_X, max_length_Y)
+    
+    # 各シーケンス内のトークンリストをパディング
+    X_padded = [pad_inner_seq(x, 0, max_length) for x in X]
+    Y_padded = [pad_inner_seq(y, 0, max_length) for y in Y]
+    
+    # テンソルに変換
+    X_tensor = torch.tensor(X_padded, dtype=torch.long)
+    Y_tensor = torch.tensor(Y_padded, dtype=torch.long)
 
-# パディング関数
-def pad_seq(seq, pad_token):
-    # シーケンス長をパディングトークンで埋める
-    seq_length = MAX_SEQ_LENGTH - len(seq)
-    return seq + [pad_token] * seq_length
+    return X_tensor, Y_tensor
 
 # データローダーを作成
 def create_data_loader(dataset, batch_size):
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
-# トークン化関数
-def tokenize(data):
-    # MeCabを使用したトークン化
-    mecab = MeCab.Tagger("-Owakati")
-    return mecab.parse(data).strip().split()
+# 日本語用のMeCabトークナイザ
+def tokenize_japanese(sentence):
+    # spacyのモデルをロード
+    nlp_ja = spacy.load("ja_core_news_md")
+    doc = nlp_ja(sentence)
+    tokens = [token.text for token in doc]
+    print(".",end="")
+    return tokens
+
+def tokenize_english(sentence):
+    # spacyのモデルをロード
+    nlp_en = spacy.load("en_core_web_md")
+    doc = nlp_en(sentence)
+    tokens = [token.text for token in doc]
+    print(".",end="")
+    return tokens
+
+# 言語に応じたトークナイズ関数を選択
+def tokenize(src_data, tgt_data, src_language='en', tgt_language='ja'):
+    if src_language == 'en':
+        tokenized_src = [tokenize_english(sentence) for sentence in src_data]
+    else:
+        tokenized_src = [tokenize_japanese(sentence) for sentence in src_data]
+
+    if tgt_language == 'ja':
+        tokenized_tgt = [tokenize_japanese(sentence) for sentence in tgt_data]
+    else:
+        tokenized_tgt = [tokenize_english(sentence) for sentence in tgt_data]
+
+    return tokenized_src, tokenized_tgt
 
 # ボキャブラリの作成
-def build_vocab(data):
-    # トークン化されたデータからボキャブラリを作成
-    tokens = [token for line in data for token in tokenize(line)]
-    vocab = collections.Counter(tokens)
-    vocab = {word: i for i, word in enumerate(vocab)}
+def build_vocab(tokenized_data, special_tokens=None):
+    # 特殊トークンを初期化
+    if special_tokens is None:
+        special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
+
+    # すべてのトークンをフラットなリストにする
+    all_tokens = [token for sentence in tokenized_data for token in sentence]
+    # 重複を削除してボキャブラリを作成
+    unique_tokens = set(all_tokens)
+    # 特殊トークンを追加
+    vocab = {token: idx + len(special_tokens) for idx, token in enumerate(unique_tokens)}
+    # 特殊トークンのインデックスを更新
+    vocab.update(special_tokens)
     return vocab
 
-# ボキャブラリを返す関数
-def get_vocab(data_path):
-    data = load_data(data_path)
-    vocab = build_vocab(data)
-    return vocab
+def tokens_to_ids(tokens, vocab):
+    return [vocab.get(token, vocab['<unk>']) for token in tokens]
+

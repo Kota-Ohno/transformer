@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .config import MAX_SEQ_LENGTH, HIDDEN_SIZE
+from config import MAX_SEQ_LENGTH, HIDDEN_SIZE
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, device):
@@ -16,9 +16,10 @@ class PositionalEncoding(nn.Module):
     def create_encoding(self):
         encoding = torch.zeros(MAX_SEQ_LENGTH, self.d_model, device=self.device)
         position = torch.arange(0, MAX_SEQ_LENGTH, dtype=torch.float, device=self.device).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, self.d_model, 2).float() * (-math.log(10000.0) / self.d_model))
+        div_term = torch.exp(torch.arange(0, self.d_model, 2, device=self.device).float() * (-math.log(10000.0) / self.d_model))
         encoding[:, 0::2] = torch.sin(position * div_term)
         encoding[:, 1::2] = torch.cos(position * div_term)
+        encoding = encoding.unsqueeze(0)  # バッチ次元を追加
         return encoding
 
 class FeedForwardNetwork(nn.Module):

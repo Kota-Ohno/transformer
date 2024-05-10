@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from .config import HIDDEN_SIZE
+from config import HIDDEN_SIZE
 
 class ScaledDotProductAttention(nn.Module):
     def __init__(self, d_model, d_k, dropout=0.1):
@@ -26,6 +26,7 @@ class MultiHeadAttention(nn.Module):
         self.d_k = d_k
         self.d_v = d_v
         self.projection_dim = d_model // num_heads
+        self.d_model = d_model
 
         self.q_linear = nn.Linear(d_model, d_model)
         self.k_linear = nn.Linear(d_model, d_model)

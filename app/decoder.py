@@ -1,9 +1,8 @@
 import torch
 import torch.nn as nn
-from .config import MAX_SEQ_LENGTH
-from .layers import PositionalEncoding, FeedForwardNetwork
-from .attention import MultiHeadAttention
-from .utils import add_padding
+from config import MAX_SEQ_LENGTH
+from layers import PositionalEncoding, FeedForwardNetwork
+from attention import MultiHeadAttention
 
 class Decoder(nn.Module):
     def __init__(self, input_dim, hidden_dim, num_heads, num_layers, ff_dim, output_dim, dropout, device):
@@ -15,12 +14,15 @@ class Decoder(nn.Module):
             DecoderLayer(hidden_dim, num_heads, ff_dim, dropout, device) for _ in range(num_layers)
         ])
         self.dropout = nn.Dropout(dropout)
+        self.output_layer = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, x, encoder_output):
-        x = add_padding(x, MAX_SEQ_LENGTH)  # パディングトークンを追加
-        x = self.embedding(x) + self.pos_encoding(x)  # トークン埋め込みと位置エンコーディングを追加
+        x = self.embedding(x)
+        x = x.squeeze(1)  # 余分な次元を削除
+        x = x + self.pos_encoding(x)
         for layer in self.layers:
             x = layer(x, encoder_output)
+        x = self.output_layer(x)  # 出力層を追加
         return x
 
 class DecoderLayer(nn.Module):
