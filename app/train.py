@@ -2,10 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
+import math
 from datasets import load_dataset
 
 from data import set_data, build_vocab, tokenize_japanese, tokenize_english, tokens_to_ids, create_data_loader
-from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE
+from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
 from utils import validate, TranslationModel
 
 # データとボキャブラリの読み込み
@@ -16,8 +17,8 @@ train_dataset = set_data(train_data[TRANSLATION_SOURCE], train_data[TRANSLATION_
 val_dataset = set_data(val_data[TRANSLATION_SOURCE], val_data[TRANSLATION_DESTINATION])
 
 # TODO: テスト用
-train_dataset = train_dataset[:50]
-val_dataset = val_dataset[:10]
+train_dataset = train_dataset[:]
+val_dataset = val_dataset[:]
 
 # ソースとターゲットをペアにする
 paired_train_dataset = list(zip(train_dataset[0], train_dataset[1]))
@@ -27,7 +28,7 @@ paired_val_dataset = list(zip(val_dataset[0], val_dataset[1]))
 print("======= tokenizing now =======")
 tokenized_train_src = [tokenize_english(src) for src, _ in paired_train_dataset]
 tokenized_val_src = [tokenize_english(src) for src, _ in paired_val_dataset]
-print("50%...")
+print("======= 50% =======")
 tokenized_train_tgt = [tokenize_japanese(tgt) for _, tgt in paired_train_dataset]
 tokenized_val_tgt = [tokenize_japanese(tgt) for _, tgt in paired_val_dataset]
 print("======= tokenizing finished ======")
@@ -61,14 +62,14 @@ criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 # オプティマイザとスケジューラを設定
 optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=0.001)
-total_steps = len(train_dataset) * NUM_EPOCHS
+total_steps = math.ceil(len(train_dataset) / BATCH_SIZE)
 from utils import WarmupScheduler
 scheduler = WarmupScheduler(optimizer, d_model=HIDDEN_SIZE, warmup_steps=WARMUP_STEPS, total_steps=total_steps)
 
 # データローダーを作成
 from data import create_data_loader
-train_loader = create_data_loader(train_dataset, batch_size=64)
-val_loader = create_data_loader(val_dataset, batch_size=64)
+train_loader = create_data_loader(train_dataset, batch_size=BATCH_SIZE)
+val_loader = create_data_loader(val_dataset, batch_size=BATCH_SIZE)
 
 # Early Stoppingのパラメータ
 best_val_loss = float('inf')
@@ -108,21 +109,21 @@ for epoch in range(NUM_EPOCHS):
         # 進捗状況を出力
         print(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], Loss: {loss.item():.4f}")
 
-        # 検証部分
-        val_loss = validate(model, val_loader, criterion, DEVICE, output_dim)
-        print(f"Validation Loss: {val_loss:.4f}")
+    # 検証部分
+    val_loss = validate(model, val_loader, criterion, DEVICE, output_dim)
+    print(f"Validation Loss: {val_loss:.4f}")
 
-        # Early Stoppingのチェック
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            patience_counter = 0
-            # ベストモデルを保存
-            torch.save(model.state_dict(), MODEL_PATH)
-        else:
-            patience_counter += 1
-            if patience_counter >= PATIENCE:
-                print("Early stopping triggered")
-                break
+    # Early Stoppingのチェック
+    if val_loss < best_val_loss:
+        best_val_loss = val_loss
+        patience_counter = 0
+        # ベストモデルを保存
+        torch.save(model.state_dict(), MODEL_PATH)
+    else:
+        patience_counter += 1
+        if patience_counter >= PATIENCE:
+            print("Early stopping triggered")
+            break
 
     # エポックごとの要約を出力
     epoch_time = time.time() - start_time
