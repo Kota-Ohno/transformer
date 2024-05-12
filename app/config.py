@@ -10,6 +10,7 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 NUM_EPOCHS = 10000  # トレーニングを実行するための設定
 PATIENCE = 5
 WARMUP_STEPS = 4000
+BATCH_SIZE = 64
 
 # 定数の定義
 BOS_TOKEN = "<s>"

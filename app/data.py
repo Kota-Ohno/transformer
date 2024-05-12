@@ -69,18 +69,18 @@ def collate_fn(batch):
 def create_data_loader(dataset, batch_size):
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
+# spacyのモデルをロード
+nlp_ja = spacy.load("ja_core_news_md")
+nlp_en = spacy.load("en_core_web_md")
+
 # 日本語用のMeCabトークナイザ
 def tokenize_japanese(sentence):
-    # spacyのモデルをロード
-    nlp_ja = spacy.load("ja_core_news_md")
     doc = nlp_ja(sentence)
     tokens = [token.text for token in doc]
     print(".",end="")
     return tokens
 
 def tokenize_english(sentence):
-    # spacyのモデルをロード
-    nlp_en = spacy.load("en_core_web_md")
     doc = nlp_en(sentence)
     tokens = [token.text for token in doc]
     print(".",end="")
