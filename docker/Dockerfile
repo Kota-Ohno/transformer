@@ -1,6 +1,9 @@
 FROM pytorch/torchserve:latest-gpu
-COPY ../app /src
 
-RUN pip install mecab-python3
+RUN pip install datasets && \
+    pip install -U pip setuptools wheel && \
+    pip install -U 'spacy[cuda11x]' && \
+    python -m spacy download en_core_web_md  && \
+    python -m spacy download ja_core_news_md
 
 WORKDIR /src
