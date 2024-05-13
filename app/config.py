@@ -18,7 +18,5 @@ EOS_TOKEN = "</s>"
 PAD_TOKEN = "<pad>"
 UNK_TOKEN = "<unk>"
 
-MODEL_PATH = "model.save"
-
 TRANSLATION_SOURCE = "en_US"
 TRANSLATION_DESTINATION = "ja_JP"

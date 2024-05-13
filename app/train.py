@@ -2,8 +2,10 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import time
+import os
 import math
 from datasets import load_dataset
+from datetime import datetime
 
 from data import set_data, build_vocab, tokenize_japanese, tokenize_english, tokens_to_ids, create_data_loader
 from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
@@ -16,7 +18,6 @@ val_data = load_dataset("Amani27/massive_translation_dataset", split="validation
 train_dataset = set_data(train_data[TRANSLATION_SOURCE], train_data[TRANSLATION_DESTINATION])
 val_dataset = set_data(val_data[TRANSLATION_SOURCE], val_data[TRANSLATION_DESTINATION])
 
-# TODO: テスト用
 train_dataset = train_dataset[:]
 val_dataset = val_dataset[:]
 
@@ -44,7 +45,7 @@ train_dataset = [(tokens_to_ids(src, base_vocab), tokens_to_ids(tgt, destination
 val_dataset = [(tokens_to_ids(src, base_vocab), tokens_to_ids(tgt, destination_vocab)) for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
 
 # ハイパーパラメータの設定
-from config import HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE, MODEL_PATH, NUM_EPOCHS
+from config import HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE, NUM_EPOCHS
 input_dim = len(base_vocab)
 output_dim = len(destination_vocab)
 
@@ -117,8 +118,14 @@ for epoch in range(NUM_EPOCHS):
     if val_loss < best_val_loss:
         best_val_loss = val_loss
         patience_counter = 0
-        # ベストモデルを保存
-        torch.save(model.state_dict(), MODEL_PATH)
+        # 現在の日付とエポック数を取得
+        current_date = datetime.now().strftime("%Y%m%d")
+        model_filename = f"translation_model_{current_date}.pth"
+        model_path = os.path.join("models", model_filename)
+        # models ディレクトリが存在しない場合は作成
+        os.makedirs(os.path.dirname(model_path), exist_ok=True)
+        # モデルを保存
+        torch.save(model.state_dict(), model_path)
     else:
         patience_counter += 1
         if patience_counter >= PATIENCE:
