@@ -1,10 +1,7 @@
 import torch
 import torch.utils.data
 from torch.utils.data import DataLoader
-from config import MAX_SEQ_LENGTH, BOS_TOKEN, EOS_TOKEN, PAD_TOKEN, UNK_TOKEN
-import collections
-
-import itertools
+from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION
 
 import spacy
 
@@ -73,32 +70,17 @@ def create_data_loader(dataset, batch_size):
 nlp_ja = spacy.load("ja_core_news_md")
 nlp_en = spacy.load("en_core_web_md")
 
-# 日本語用のMeCabトークナイザ
-def tokenize_japanese(sentence):
-    doc = nlp_ja(sentence)
-    tokens = [token.text for token in doc]
-    print(".",end="")
-    return tokens
-
-def tokenize_english(sentence):
-    doc = nlp_en(sentence)
-    tokens = [token.text for token in doc]
-    print(".",end="")
-    return tokens
-
-# 言語に応じたトークナイズ関数を選択
-def tokenize(src_data, tgt_data, src_language='en', tgt_language='ja'):
-    if src_language == 'en':
-        tokenized_src = [tokenize_english(sentence) for sentence in src_data]
+def tokenize(sentence, lang):
+    if lang == "ja_JP":
+        doc = nlp_ja(sentence)
+    elif lang == "en_US":
+        doc = nlp_en(sentence)
     else:
-        tokenized_src = [tokenize_japanese(sentence) for sentence in src_data]
+        print("not yet implemented")
 
-    if tgt_language == 'ja':
-        tokenized_tgt = [tokenize_japanese(sentence) for sentence in tgt_data]
-    else:
-        tokenized_tgt = [tokenize_english(sentence) for sentence in tgt_data]
-
-    return tokenized_src, tokenized_tgt
+    tokens = [token.text for token in doc]
+    print(".", end="")
+    return tokens
 
 # ボキャブラリの作成
 def build_vocab(tokenized_data, special_tokens=None):

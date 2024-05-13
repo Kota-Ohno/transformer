@@ -7,7 +7,7 @@ import math
 from datasets import load_dataset
 from datetime import datetime
 
-from data import set_data, build_vocab, tokenize_japanese, tokenize_english, tokens_to_ids, create_data_loader
+from data import set_data, build_vocab, tokenize, tokens_to_ids, create_data_loader
 from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
 from utils import validate, TranslationModel
 
@@ -27,11 +27,11 @@ paired_val_dataset = list(zip(val_dataset[0], val_dataset[1]))
 
 # トークナイズ
 print("======= tokenizing now =======")
-tokenized_train_src = [tokenize_english(src) for src, _ in paired_train_dataset]
-tokenized_val_src = [tokenize_english(src) for src, _ in paired_val_dataset]
+tokenized_train_src = [tokenize(src, TRANSLATION_SOURCE) for src, _ in paired_train_dataset]
+tokenized_val_src = [tokenize(src, TRANSLATION_SOURCE) for src, _ in paired_val_dataset]
 print("======= 50% =======")
-tokenized_train_tgt = [tokenize_japanese(tgt) for _, tgt in paired_train_dataset]
-tokenized_val_tgt = [tokenize_japanese(tgt) for _, tgt in paired_val_dataset]
+tokenized_train_tgt = [tokenize(tgt, TRANSLATION_DESTINATION) for _, tgt in paired_train_dataset]
+tokenized_val_tgt = [tokenize(tgt, TRANSLATION_DESTINATION) for _, tgt in paired_val_dataset]
 print("======= tokenizing finished ======")
 
 # ボキャブラリの作成
