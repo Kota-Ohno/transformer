@@ -18,5 +18,8 @@ EOS_TOKEN = "</s>"
 PAD_TOKEN = "<pad>"
 UNK_TOKEN = "<unk>"
 
-TRANSLATION_SOURCE = "en_US"
-TRANSLATION_DESTINATION = "ja_JP"
+TRANSLATION_SOURCE = "ja_JP"
+TRANSLATION_DESTINATION = "en_US"
+
+INPUT_VOCAB_PATH = "models/vocab_input.pth"
+OUTPUT_VOCAB_PATH = "models/vocab_output.pth"
