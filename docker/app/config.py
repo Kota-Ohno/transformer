@@ -21,4 +21,5 @@ UNK_TOKEN = "<unk>"
 TRANSLATION_SOURCE = "ja_JP"
 TRANSLATION_DESTINATION = "en_US"
 
-VOCAB_PATH = "models/vocab.pth"
+INPUT_VOCAB_PATH = "models/vocab_input.pth"
+OUTPUT_VOCAB_PATH = "models/vocab_output.pth"

@@ -90,3 +90,8 @@ def build_vocabulary(tokenized_data, special_tokens=None):
 def tokens_to_ids(tokens, vocabulary):
     stoi = vocabulary.get_stoi()  # トークンからインデックスへのマッピングを一度取得
     return [stoi[token] if token in stoi else vocabulary['<unk>'] for token in tokens]
+
+def ids_to_tokens(ids, output_vocab):
+    itos = output_vocab.get_itos()  # get_itos()を使用してインデックスからトークンへのマッピングを取得
+    tokens = [itos[id] for id in ids]
+    return tokens
