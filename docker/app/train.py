@@ -7,7 +7,7 @@ import math
 from datasets import load_dataset
 from datetime import datetime
 
-from data import set_data, build_vocab, tokenize, tokens_to_ids, create_data_loader
+from data import set_data, build_vocabulary, tokenize, tokens_to_ids, create_data_loader
 from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
 from utils import validate, TranslationModel
 
@@ -36,18 +36,29 @@ print("======= tokenizing finished ======")
 
 # ボキャブラリの作成
 print("======= build vocabulary now ======")
-base_vocab = build_vocab(tokenized_train_src)
-destination_vocab = build_vocab(tokenized_train_tgt)
+base_vocabulary = build_vocabulary(tokenized_train_src)
+destination_vocabulary = build_vocabulary(tokenized_train_tgt)
 print("======= build vocabulary finished ======")
 
+# ボキャブラリの保存
+print("======= save vocabulary now ======")
+vocab_input_path = os.path.join("models", "vocab_input.pth")
+torch.save(base_vocabulary, vocab_input_path)
+vocab_output_path = os.path.join("models", "vocab_output.pth")
+torch.save(destination_vocabulary, vocab_output_path)
+print("======= save vocabulary finished ======")
+
+
 # 単語IDに変換
-train_dataset = [(tokens_to_ids(src, base_vocab), tokens_to_ids(tgt, destination_vocab)) for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
-val_dataset = [(tokens_to_ids(src, base_vocab), tokens_to_ids(tgt, destination_vocab)) for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
+print("======= translate tokens to ids ======")
+train_dataset = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
+val_dataset = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
+print("======= translate finished ======")
 
 # ハイパーパラメータの設定
 from config import HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE, NUM_EPOCHS
-input_dim = len(base_vocab)
-output_dim = len(destination_vocab)
+input_dim = len(base_vocabulary)
+output_dim = len(destination_vocabulary)
 
 # エンコーダーとデコーダーのインスタンスを作成
 from encoder import Encoder

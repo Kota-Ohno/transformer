@@ -1,8 +1,8 @@
 import torch
 import torch.utils.data
 from torch.utils.data import DataLoader
-from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION
-
+from torchtext.vocab import vocab
+from collections import Counter
 import spacy
 
 # データセットクラス
@@ -27,13 +27,6 @@ def preprocess_data(data):
     # 例: data = tokenize_and_encode(data)
     return data
 
-def load_data(data_path):
-    with open(data_path, "r") as f:
-        data = f.read().splitlines()
-    data = preprocess_data(data)
-    return data
-
-# トレーニングセットとテストセットに分割
 def set_data(X, y):
     dataset = MyDataset(X, y)
     return dataset
@@ -83,21 +76,17 @@ def tokenize(sentence, lang):
     return tokens
 
 # ボキャブラリの作成
-def build_vocab(tokenized_data, special_tokens=None):
+def build_vocabulary(tokenized_data, special_tokens=None):
     # 特殊トークンを初期化
     if special_tokens is None:
         special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
 
-    # すべてのトークンをフラットなリストにする
-    all_tokens = [token for sentence in tokenized_data for token in sentence]
-    # 重複を削除してボキャブラリを作成
-    unique_tokens = set(all_tokens)
-    # 特殊トークンを追加
-    vocab = {token: idx + len(special_tokens) for idx, token in enumerate(unique_tokens)}
-    # 特殊トークンのインデックスを更新
-    vocab.update(special_tokens)
-    return vocab
+    # トークンのカウント
+    counter = Counter(token for sentence in tokenized_data for token in sentence)
+    # Vocab オブジェクトの作成
+    vocabulary = vocab(counter, specials=special_tokens)
+    return vocabulary
 
-def tokens_to_ids(tokens, vocab):
-    return [vocab.get(token, vocab['<unk>']) for token in tokens]
-
+def tokens_to_ids(tokens, vocabulary):
+    stoi = vocabulary.get_stoi()  # トークンからインデックスへのマッピングを一度取得
+    return [stoi[token] if token in stoi else vocabulary['<unk>'] for token in tokens]
