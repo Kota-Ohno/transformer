@@ -11,15 +11,12 @@ NUM_EPOCHS = 10000  # トレーニングを実行するための設定
 PATIENCE = 5
 WARMUP_STEPS = 4000
 BATCH_SIZE = 64
-
-# 定数の定義
-BOS_TOKEN = "<s>"
-EOS_TOKEN = "</s>"
-PAD_TOKEN = "<pad>"
-UNK_TOKEN = "<unk>"
+LEARNING_RATE = 0.001
 
 TRANSLATION_SOURCE = "ja_JP"
 TRANSLATION_DESTINATION = "en_US"
+TRANSLATION_SOURCE2 = "japanese"
+TRANSLATION_DESTINATION2 = "english"
 
 INPUT_VOCAB_PATH = "models/vocab_input.pth"
 OUTPUT_VOCAB_PATH = "models/vocab_output.pth"

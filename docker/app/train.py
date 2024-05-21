@@ -4,11 +4,12 @@ import torch.optim as optim
 import time
 import os
 import math
+from sklearn.model_selection import train_test_split
 from datasets import load_dataset
 from datetime import datetime
 
 from data import set_data, build_vocabulary, tokenize, tokens_to_ids, create_data_loader
-from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
+from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, TRANSLATION_SOURCE2, TRANSLATION_DESTINATION2, WARMUP_STEPS, PATIENCE, BATCH_SIZE, LEARNING_RATE
 from utils import validate, TranslationModel
 
 # データとボキャブラリの読み込み
@@ -24,6 +25,22 @@ val_dataset = val_dataset[:]
 # ソースとターゲットをペアにする
 paired_train_dataset = list(zip(train_dataset[0], train_dataset[1]))
 paired_val_dataset = list(zip(val_dataset[0], val_dataset[1]))
+
+# 2つ目のデータセットを読み込む
+train_data2 = load_dataset("Verah/JParaCrawl-Filtered-English-Japanese-Parallel-Corpus", split="train")
+
+# model2_acceptedカラムが1のデータのみを抽出
+filtered_train_data2 = train_data2.filter(lambda filter: filter['model2_accepted'] == 1)
+
+# データセットを設定
+train_dataset2 = set_data(filtered_train_data2[TRANSLATION_SOURCE2], filtered_train_data2[TRANSLATION_DESTINATION2])
+
+# train_data2を学習用データとテストデータに分割
+train_dataset2, val_dataset2 = train_test_split(train_dataset2, test_size=0.1, random_state=42)
+
+# データセットを合体
+paired_train_dataset += train_dataset2
+paired_val_dataset += val_dataset2
 
 # トークナイズ
 print("======= tokenizing now =======")
@@ -73,7 +90,7 @@ model = TranslationModel(encoder, decoder).to(DEVICE)
 criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 # オプティマイザとスケジューラを設定
-optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=0.001)
+optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=LEARNING_RATE)
 total_steps = math.ceil(len(train_dataset) / BATCH_SIZE)
 from utils import WarmupScheduler
 scheduler = WarmupScheduler(optimizer, d_model=HIDDEN_SIZE, warmup_steps=WARMUP_STEPS, total_steps=total_steps)
