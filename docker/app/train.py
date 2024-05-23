@@ -4,61 +4,33 @@ import torch.optim as optim
 import time
 import os
 import math
-from datasets import load_dataset
+
 from datetime import datetime
 
-from data import set_data, build_vocabulary, tokenize, tokens_to_ids, create_data_loader
-from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, WARMUP_STEPS, PATIENCE, BATCH_SIZE
+from data import create_data_loader
+from config import WARMUP_STEPS, PATIENCE, BATCH_SIZE, LEARNING_RATE, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from utils import validate, TranslationModel
 
-# データとボキャブラリの読み込み
-train_data = load_dataset("Amani27/massive_translation_dataset", split="train")
-val_data = load_dataset("Amani27/massive_translation_dataset", split="validation")
+from text_tokenizer import load_tokenized_data
 
-train_dataset = set_data(train_data[TRANSLATION_SOURCE], train_data[TRANSLATION_DESTINATION])
-val_dataset = set_data(val_data[TRANSLATION_SOURCE], val_data[TRANSLATION_DESTINATION])
+# トークナイズ済みデータの読み込み
+train_data_path = "tokenized_train_data.pth"
+train_token_ids = load_tokenized_data(train_data_path)
+if train_token_ids is None:
+    print("先にtext_tokenizer.pyを実行してください")
 
-train_dataset = train_dataset[:]
-val_dataset = val_dataset[:]
+val_data_path = "tokenized_val_data.pth"
+val_token_ids = load_tokenized_data(val_data_path)
+if val_token_ids is None:
+    print("先にtext_tokenizer.pyを実行してください")
 
-# ソースとターゲットをペアにする
-paired_train_dataset = list(zip(train_dataset[0], train_dataset[1]))
-paired_val_dataset = list(zip(val_dataset[0], val_dataset[1]))
-
-# トークナイズ
-print("======= tokenizing now =======")
-tokenized_train_src = [tokenize(src, TRANSLATION_SOURCE) for src, _ in paired_train_dataset]
-tokenized_val_src = [tokenize(src, TRANSLATION_SOURCE) for src, _ in paired_val_dataset]
-print("======= 50% =======")
-tokenized_train_tgt = [tokenize(tgt, TRANSLATION_DESTINATION) for _, tgt in paired_train_dataset]
-tokenized_val_tgt = [tokenize(tgt, TRANSLATION_DESTINATION) for _, tgt in paired_val_dataset]
-print("======= tokenizing finished ======")
-
-# ボキャブラリの作成
-print("======= build vocabulary now ======")
-base_vocabulary = build_vocabulary(tokenized_train_src)
-destination_vocabulary = build_vocabulary(tokenized_train_tgt)
-print("======= build vocabulary finished ======")
-
-# ボキャブラリの保存
-print("======= save vocabulary now ======")
-vocab_input_path = os.path.join("models", "vocab_input.pth")
-torch.save(base_vocabulary, vocab_input_path)
-vocab_output_path = os.path.join("models", "vocab_output.pth")
-torch.save(destination_vocabulary, vocab_output_path)
-print("======= save vocabulary finished ======")
-
-
-# 単語IDに変換
-print("======= translate tokens to ids ======")
-train_dataset = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
-val_dataset = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
-print("======= translate finished ======")
+input_vocab = torch.load(INPUT_VOCAB_PATH)
+output_vocab = torch.load(OUTPUT_VOCAB_PATH)
 
 # ハイパーパラメータの設定
 from config import HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE, NUM_EPOCHS
-input_dim = len(base_vocabulary)
-output_dim = len(destination_vocabulary)
+input_dim = len(input_vocab)
+output_dim = len(output_vocab)
 
 # エンコーダーとデコーダーのインスタンスを作成
 from encoder import Encoder
@@ -73,15 +45,15 @@ model = TranslationModel(encoder, decoder).to(DEVICE)
 criterion = nn.CrossEntropyLoss(ignore_index=0)
 
 # オプティマイザとスケジューラを設定
-optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=0.001)
-total_steps = math.ceil(len(train_dataset) / BATCH_SIZE)
+optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=LEARNING_RATE)
+total_steps = math.ceil(len(train_token_ids) / BATCH_SIZE)
 from utils import WarmupScheduler
 scheduler = WarmupScheduler(optimizer, d_model=HIDDEN_SIZE, warmup_steps=WARMUP_STEPS, total_steps=total_steps)
 
 # データローダーを作成
 from data import create_data_loader
-train_loader = create_data_loader(train_dataset, batch_size=BATCH_SIZE)
-val_loader = create_data_loader(val_dataset, batch_size=BATCH_SIZE)
+train_loader = create_data_loader(train_token_ids, batch_size=BATCH_SIZE)
+val_loader = create_data_loader(val_token_ids, batch_size=BATCH_SIZE)
 
 # Early Stoppingのパラメータ
 best_val_loss = float('inf')

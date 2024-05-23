@@ -1,7 +1,7 @@
 import torch
 import sys
 import os
-from datetime import datetime
+import glob
 from encoder import Encoder
 from decoder import Decoder
 from utils import TranslationModel
@@ -14,9 +14,14 @@ def load_model(input_vocab, output_vocab):
     encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE).to(DEVICE)
     decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE).to(DEVICE)
     model = TranslationModel(encoder, decoder).to(DEVICE)
-    current_date = datetime.now().strftime("%Y%m%d")
-    model_filename = f"translation_model_{current_date}.pth"
-    model_path = os.path.join("models", model_filename)
+    
+    # modelsディレクトリから最新のモデルファイル名を取得
+    model_files = glob.glob('models/*.pth')
+    model_files = [f for f in model_files if not f.endswith('vocab_input.pth') and not f.endswith('vocab_output.pth')]
+    model_filename = max(model_files, key=os.path.getctime)  # 最新のファイルを選択
+
+    # ここでパスを結合する際に、"models" ディレクトリを重複させないように
+    model_path = os.path.join("models", os.path.basename(model_filename))
     model.load_state_dict(torch.load(model_path))
     model.eval()
     return model
@@ -26,7 +31,9 @@ def load_vocab(vocab_path):
 
 def preprocess_input(sentence, input_vocab):
     tokens = tokenize(sentence, TRANSLATION_SOURCE)
-    token_ids = tokens_to_ids(tokens, input_vocab)  # vocabは事前に定義されたボキャブラリ
+    # トークンからインデックスへのマッピングを一度取得
+    input_stoi = input_vocab.get_stoi()
+    token_ids = tokens_to_ids(tokens, input_stoi, input_vocab['<unk>'])  # vocabは事前に定義されたボキャブラリ
     return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
 
 def predict(model, input_tensor):
