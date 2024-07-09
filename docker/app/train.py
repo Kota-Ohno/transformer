@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.optim as optim
 import time
 import os
-import math
 from datetime import datetime
 from data import create_data_loader
 from config import (
