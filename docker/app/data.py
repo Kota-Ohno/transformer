@@ -36,7 +36,6 @@ def pad_inner_seq(seq, pad_token, max_length):
     padded_seq = seq + [pad_token] * (max_length - len(seq))
     return padded_seq
 
-
 def collate_fn(batch):
     X, Y = zip(*batch)
     
