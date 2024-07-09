@@ -59,20 +59,19 @@ def main():
     model = TranslationModel(encoder, decoder).to(DEVICE)
     
     # 損失関数を定義
-    criterion = nn.CrossEntropyLoss(ignore_index=0)
+    criterion = nn.CrossEntropyLoss(ignore_index=input_vocab['<pad>'])
     
-    # オプティマイザとスケジューラを設定
-    optimizer = optim.Adam(list(encoder.parameters()) + list(decoder.parameters()), lr=LEARNING_RATE)
-    total_steps = math.ceil(len(train_token_ids) / BATCH_SIZE)
-    scheduler = WarmupScheduler(optimizer, d_model=HIDDEN_SIZE, warmup_steps=WARMUP_STEPS, total_steps=total_steps)
+    # オプティマイザとスケジューラを定義
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    scheduler = WarmupScheduler(optimizer, HIDDEN_SIZE, WARMUP_STEPS, NUM_EPOCHS)
     
     # データローダーを作成
-    train_loader = create_data_loader(train_token_ids, batch_size=BATCH_SIZE)
-    val_loader = create_data_loader(val_token_ids, batch_size=BATCH_SIZE)
+    train_loader = create_data_loader(train_token_ids, BATCH_SIZE)
+    val_loader = create_data_loader(val_token_ids, BATCH_SIZE)
     
-    # Early Stoppingのパラメータ
     best_val_loss = float('inf')
     patience_counter = 0
+    total_steps = len(train_loader)
     
     # トレーニングループ
     for epoch in range(NUM_EPOCHS):

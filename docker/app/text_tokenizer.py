@@ -44,13 +44,11 @@ def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_t
             tokenized_pairs_val = list(executor.map(tokenize_wrapper, [(x[0], lang_src) for x in val_batch] + [(x[1], lang_tgt) for x in val_batch]))
             tokenized_val_src.extend(tokenized_pairs_val[:len(tokenized_pairs_val)//2])
             tokenized_val_tgt.extend(tokenized_pairs_val[len(tokenized_pairs_val)//2:])
-    print("")
-    print("======= tokenize finished ======")
 
-    # ボキャブラリの作成
+    # ボキャブラリの構築
     print("======= build vocabulary now ======")
-    base_vocabulary = build_vocabulary(tokenized_train_src + tokenized_val_src)
-    destination_vocabulary = build_vocabulary(tokenized_train_tgt + tokenized_val_tgt)
+    base_vocabulary = build_vocabulary(tokenized_train_src)
+    destination_vocabulary = build_vocabulary(tokenized_train_tgt)
     print("======= build vocabulary finished ======")
 
     # ボキャブラリの保存

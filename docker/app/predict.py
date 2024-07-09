@@ -22,7 +22,7 @@ def load_model(input_vocab, output_vocab):
 
     # ここでパスを結合する際に、"models" ディレクトリを重複させないように
     model_path = os.path.join("models", os.path.basename(model_filename))
-    model.load_state_dict(torch.load(model_path))
+    model.load_state_dict(torch.load(model_path, map_location=DEVICE))  # DEVICEにマップ
     model.eval()
     return model
 
