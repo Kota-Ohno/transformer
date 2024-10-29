@@ -1,5 +1,7 @@
 # prototype-transformer
- 
+
+.envのWANDB_API_KEYを設定する。
+
 ```
 docker compose up -d
 docker exec -it transformer /bin/sh

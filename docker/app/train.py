@@ -15,6 +15,7 @@ from text_tokenizer import load_tokenized_data
 import logging
 from typing import Tuple, List
 import sys
+import wandb
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -86,6 +87,18 @@ def main():
         patience_counter = 0
         total_steps = len(train_loader)
         
+        # WandBの初期化
+        wandb.init(project="translation_project", config={
+            "learning_rate": LEARNING_RATE,
+            "epochs": NUM_EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "hidden_size": HIDDEN_SIZE,
+            "num_heads": NUM_HEADS,
+            "num_layers": NUM_LAYERS,
+            "d_ff": D_FF,
+            "dropout_rate": DROPOUT_RATE
+        })
+        
         # トレーニングループ
         for epoch in range(NUM_EPOCHS):
             start_time = time.time()
@@ -113,10 +126,12 @@ def main():
                 
                 # 進捗状況を出力
                 logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], Loss: {loss.item():.4f}")
+                wandb.log({"loss": loss.item()})
             
             # 検証部分
             val_loss = validate(model, val_loader, criterion, DEVICE, output_dim)
             logging.info(f"Validation Loss: {val_loss:.4f}")
+            wandb.log({"val_loss": val_loss})
             
             # Early Stoppingのチェック
             if val_loss < best_val_loss:

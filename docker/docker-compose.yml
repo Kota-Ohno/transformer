@@ -15,3 +15,5 @@ services:
             - capabilities: [gpu]
     shm_size: "256mb"
     tty: true
+    environment:
+      - WANDB_API_KEY=${WANDB_API_KEY}
