@@ -66,14 +66,15 @@ def main():
         from encoder import Encoder
         from decoder import Decoder
 
-        encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE)
-        decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE)
+        encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE).to(DEVICE)
+        decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE).to(DEVICE)
 
-        # モデルのインスタンスを作成
+        # モデルをデバイスに移動
         model = TranslationModel(encoder, decoder)
+        model = model.to(DEVICE)
         
         # 損失関数を定義
-        criterion = nn.CrossEntropyLoss(ignore_index=input_vocab['<pad>'])
+        criterion = nn.CrossEntropyLoss(ignore_index=input_vocab['<pad>']).to(DEVICE)
         
         # オプティマイザとスケジューラを定義
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -102,9 +103,10 @@ def main():
         # トレーニングループ
         for epoch in range(NUM_EPOCHS):
             start_time = time.time()
+            model.train()  # 訓練モードに設定
             
             for i, (X_batch, y_batch) in enumerate(train_loader):
-                # データを GPU に送る
+                # データを明示的にデバイスに移動
                 X_batch = X_batch.to(DEVICE)
                 y_batch = y_batch.to(DEVICE)
                 
@@ -114,7 +116,10 @@ def main():
                 # 順伝播
                 decoder_output = model(X_batch, y_batch)
                 
-                # 損失を計算
+                # 損失計算
+                decoder_output = decoder_output.to(DEVICE)
+                y_batch = y_batch.to(DEVICE)
+                
                 loss = criterion(decoder_output.view(-1, output_dim), y_batch.view(-1))
                 
                 # 勾配を計算
@@ -129,6 +134,7 @@ def main():
                 wandb.log({"loss": loss.item()})
             
             # 検証部分
+            model.eval()  # 評価モードに設定
             val_loss = validate(model, val_loader, criterion, DEVICE, output_dim)
             logging.info(f"Validation Loss: {val_loss:.4f}")
             wandb.log({"val_loss": val_loss})
