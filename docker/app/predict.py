@@ -31,9 +31,7 @@ def load_vocab(vocab_path):
 
 def preprocess_input(sentence, input_vocab):
     tokens = tokenize(sentence, TRANSLATION_SOURCE)
-    # トークンからインデックスへのマッピングを一度取得
-    input_stoi = input_vocab.get_stoi()
-    token_ids = tokens_to_ids(tokens, input_stoi, input_vocab['<unk>'])  # vocabは事前に定義されたボキャブラリ
+    token_ids = tokens_to_ids(tokens, input_vocab)
     return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
 
 def predict(model, input_tensor):
