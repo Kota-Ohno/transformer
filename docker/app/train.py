@@ -117,9 +117,6 @@ def main():
                 decoder_output = model(X_batch, y_batch)
                 
                 # 損失計算
-                decoder_output = decoder_output.to(DEVICE)
-                y_batch = y_batch.to(DEVICE)
-                
                 loss = criterion(decoder_output.view(-1, output_dim), y_batch.view(-1))
                 
                 # 勾配を計算
