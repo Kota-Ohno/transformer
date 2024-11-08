@@ -105,6 +105,9 @@ def main():
             start_time = time.time()
             model.train()  # 訓練モードに設定
             
+            # バッチ開始時間を初期化
+            batch_start_time = time.time()
+            
             for i, (X_batch, y_batch) in enumerate(train_loader):
                 # データを明示的にデバイスに移動
                 X_batch = X_batch.to(DEVICE)
@@ -129,9 +132,20 @@ def main():
                 optimizer.step()
                 scheduler.step()
                 
+                # より詳細なメトリクスをログに記録
+                wandb.log({
+                    "loss": loss.item(),
+                    "learning_rate": optimizer.param_groups[0]["lr"],
+                    "grad_norm": grad_norm.item(),
+                    "batch_time": time.time() - batch_start_time  # バッチ処理時間を追加
+                })
+                
+                # 次のバッチの開始時間を記録
+                batch_start_time = time.time()
+                
                 # 進捗状況を出力
-                logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], Loss: {loss.item():.4f}")
-                wandb.log({"loss": loss.item()})
+                logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], "
+                            f"Loss: {loss.item():.4f}, Grad norm: {grad_norm.item():.4f}")
             
             # 検証部分
             model.eval()  # 評価モードに設定
