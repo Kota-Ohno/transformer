@@ -30,11 +30,20 @@ def load_vocab(vocab_path):
     return torch.load(vocab_path)
 
 def preprocess_input(sentence, input_vocab):
-    tokens = tokenize(sentence, TRANSLATION_SOURCE)
-    token_ids = tokens_to_ids(tokens, input_vocab)
-    return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
+    try:
+        tokens = tokenize(sentence, TRANSLATION_SOURCE)
+        token_ids = tokens_to_ids(tokens, input_vocab)
+        return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
+    except KeyError as e:
+        print(f"エラー: 未知の単語が含まれています: {e}")
+        return None
+    except Exception as e:
+        print(f"予期せぬエラーが発生しました: {e}")
+        return None
 
 def predict(model, input_tensor):
+    if input_tensor is None:
+        return None
     with torch.no_grad():
         output = model(input_tensor, input_tensor)
     return output
@@ -54,10 +63,18 @@ def main():
         stripped_line = line.strip()
         if stripped_line.lower() == "exit":
             break
+            
         input_tensor = preprocess_input(line.strip(), input_vocab)
-        output_ids = predict(model, input_tensor).argmax(-1).squeeze().tolist()  # モデルの出力から最も可能性の高い単語のIDを取得
-        output_tokens = ids_to_tokens(output_ids, output_vocab)  # IDをトークンに変換
-        print("Output:", spacer.join(output_tokens))  # トークンをスペースで結合して出力
+        if input_tensor is None:
+            continue
+            
+        output_ids = predict(model, input_tensor)
+        if output_ids is None:
+            continue
+            
+        output_ids = output_ids.argmax(-1).squeeze().tolist()
+        output_tokens = ids_to_tokens(output_ids, output_vocab)
+        print("Output:", spacer.join(output_tokens))
     print("終了しました")
 
 if __name__ == "__main__":
