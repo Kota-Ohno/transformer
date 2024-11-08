@@ -15,6 +15,7 @@ from text_tokenizer import load_tokenized_data
 import logging
 from typing import Tuple, List
 import sys
+import wandb
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -65,14 +66,15 @@ def main():
         from encoder import Encoder
         from decoder import Decoder
 
-        encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE)
-        decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE)
+        encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE).to(DEVICE)
+        decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE).to(DEVICE)
 
-        # モデルのインスタンスを作成
+        # モデルをデバイスに移動
         model = TranslationModel(encoder, decoder)
+        model = model.to(DEVICE)
         
         # 損失関数を定義
-        criterion = nn.CrossEntropyLoss(ignore_index=input_vocab['<pad>'])
+        criterion = nn.CrossEntropyLoss(ignore_index=input_vocab['<pad>']).to(DEVICE)
         
         # オプティマイザとスケジューラを定義
         optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -86,12 +88,28 @@ def main():
         patience_counter = 0
         total_steps = len(train_loader)
         
+        # WandBの初期化
+        wandb.init(project="translation_project", config={
+            "learning_rate": LEARNING_RATE,
+            "epochs": NUM_EPOCHS,
+            "batch_size": BATCH_SIZE,
+            "hidden_size": HIDDEN_SIZE,
+            "num_heads": NUM_HEADS,
+            "num_layers": NUM_LAYERS,
+            "d_ff": D_FF,
+            "dropout_rate": DROPOUT_RATE
+        })
+        
         # トレーニングループ
         for epoch in range(NUM_EPOCHS):
             start_time = time.time()
+            model.train()  # 訓練モードに設定
+            
+            # バッチ開始時間を初期化
+            batch_start_time = time.time()
             
             for i, (X_batch, y_batch) in enumerate(train_loader):
-                # データを GPU に送る
+                # データを明示的にデバイスに移動
                 X_batch = X_batch.to(DEVICE)
                 y_batch = y_batch.to(DEVICE)
                 
@@ -101,22 +119,39 @@ def main():
                 # 順伝播
                 decoder_output = model(X_batch, y_batch)
                 
-                # 損失を計算
+                # 損失計算
                 loss = criterion(decoder_output.view(-1, output_dim), y_batch.view(-1))
                 
                 # 勾配を計算
                 loss.backward()
                 
+                # 勾配クリッピングを追加
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                
                 # パラメータを更新
                 optimizer.step()
                 scheduler.step()
                 
+                # より詳細なメトリクスをログに記録
+                wandb.log({
+                    "loss": loss.item(),
+                    "learning_rate": optimizer.param_groups[0]["lr"],
+                    "grad_norm": grad_norm.item(),
+                    "batch_time": time.time() - batch_start_time  # バッチ処理時間を追加
+                })
+                
+                # 次のバッチの開始時間を記録
+                batch_start_time = time.time()
+                
                 # 進捗状況を出力
-                logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], Loss: {loss.item():.4f}")
+                logging.info(f"Epoch [{epoch+1}/{NUM_EPOCHS}] Step [{i+1}/{total_steps}], "
+                            f"Loss: {loss.item():.4f}, Grad norm: {grad_norm.item():.4f}")
             
             # 検証部分
+            model.eval()  # 評価モードに設定
             val_loss = validate(model, val_loader, criterion, DEVICE, output_dim)
             logging.info(f"Validation Loss: {val_loss:.4f}")
+            wandb.log({"val_loss": val_loss})
             
             # Early Stoppingのチェック
             if val_loss < best_val_loss:

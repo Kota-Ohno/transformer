@@ -60,13 +60,12 @@ def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_t
     print("======= save vocabulary finished ======")
 
     # トークンからインデックスへのマッピングを一度取得
-    base_stoi = base_vocabulary.get_stoi()
-    destination_stoi = destination_vocabulary.get_stoi()
-
-    token_ids_train = [(tokens_to_ids(src, base_stoi, base_vocabulary['<unk>']), tokens_to_ids(tgt, destination_stoi, destination_vocabulary['<unk>'])) for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
+    token_ids_train = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) 
+                       for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
     save_tokenized_data(token_ids_train, path_train)
 
-    token_ids_val = [(tokens_to_ids(src, base_stoi, base_vocabulary['<unk>']), tokens_to_ids(tgt, destination_stoi, destination_vocabulary['<unk>'])) for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
+    token_ids_val = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) 
+                     for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
     save_tokenized_data(token_ids_val, path_val)
 
     return token_ids_train, token_ids_val

@@ -1,7 +1,6 @@
 import torch
 import torch.utils.data
 from torch.utils.data import DataLoader
-from torchtext.vocab import vocab
 from collections import Counter
 import spacy
 
@@ -74,23 +73,58 @@ def tokenize(sentence, lang):
     print(".", end="")
     return tokens
 
-# ボキャブラリの作成
-def build_vocabulary(tokenized_data, special_tokens=None):
-    # 特殊トークンを初期化
-    if special_tokens is None:
-        special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2, '</s>': 3}
+class Vocabulary:
+    def __init__(self, special_tokens=None):
+        # 特殊トークンの初期化
+        if special_tokens is None:
+            special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2}
+        
+        self.token2id = special_tokens
+        self.id2token = {v: k for k, v in special_tokens.items()}
+        self.next_id = len(special_tokens)
 
+    def add_token(self, token):
+        if token not in self.token2id:
+            self.token2id[token] = self.next_id
+            self.id2token[self.next_id] = token
+            self.next_id += 1
+
+    def build_vocab(self, counter, min_freq=1):
+        # カウンターの頻度でソート
+        sorted_tokens = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
+        
+        # 頻度がmin_freq以上のトークンを追加
+        for token, freq in sorted_tokens:
+            if freq >= min_freq:
+                self.add_token(token)
+
+    def __len__(self):
+        return len(self.token2id)
+
+    def get_stoi(self):
+        return self.token2id
+
+    def get_itos(self):
+        return self.id2token
+
+    # __getitem__メソッドを追加
+    def __getitem__(self, token):
+        return self.token2id.get(token, self.token2id['<unk>'])
+
+# 使用例
+def build_vocabulary(tokenized_data, special_tokens=None):
     # トークンのカウント
     counter = Counter(token for sentence in tokenized_data for token in sentence)
-    # Vocab オブジェクトの作成
-    vocabulary = vocab(counter, specials=special_tokens)
+    
+    # Vocabularyオブジェクトの作成と構築
+    vocabulary = Vocabulary(special_tokens)
+    vocabulary.build_vocab(counter)
+    
     return vocabulary
 
-def tokens_to_ids(tokens, stoi, unk):
-    print(".", end="")
-    return [stoi[token] if token in stoi else unk for token in tokens]
+def tokens_to_ids(tokens, vocabulary):
+    return [vocabulary[token] for token in tokens]
 
-def ids_to_tokens(ids, output_vocab):
-    itos = output_vocab.get_itos()  # get_itos()を使用してインデックスからトークンへのマッピングを取得
-    tokens = [itos[id] for id in ids]
-    return tokens
+def ids_to_tokens(ids, vocabulary):
+    itos = vocabulary.get_itos()
+    return [itos[id] for id in ids]

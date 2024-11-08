@@ -21,8 +21,7 @@ def validate(model, val_loader, criterion, device, output_dim):
     with torch.no_grad():
         for X_batch, y_batch in val_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-            encoder_output = model.encoder(X_batch)
-            decoder_output = model.decoder(y_batch, encoder_output)
+            decoder_output = model(X_batch, y_batch)
             loss = criterion(decoder_output.view(-1, output_dim), y_batch.view(-1))
             total_val_loss += loss.item()
     return total_val_loss / len(val_loader)
