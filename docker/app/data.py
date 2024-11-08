@@ -77,7 +77,7 @@ class Vocabulary:
     def __init__(self, special_tokens=None):
         # 特殊トークンの初期化
         if special_tokens is None:
-            special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2, '': 3}
+            special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2}
         
         self.token2id = special_tokens
         self.id2token = {v: k for k, v in special_tokens.items()}
