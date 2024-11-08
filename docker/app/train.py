@@ -122,6 +122,9 @@ def main():
                 # 勾配を計算
                 loss.backward()
                 
+                # 勾配クリッピングを追加
+                grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                
                 # パラメータを更新
                 optimizer.step()
                 scheduler.step()
