@@ -89,7 +89,11 @@ def main():
         total_steps = len(train_loader)
         
         # WandBの初期化
-        wandb.init(project="translation_project", config={
+        wandb.init(
+            project=os.getenv("WANDB_PROJECT_NAME", "translation_project"),
+            name=f"train_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            tags=["transformer", "translation"],
+            config={
             "learning_rate": LEARNING_RATE,
             "epochs": NUM_EPOCHS,
             "batch_size": BATCH_SIZE,
