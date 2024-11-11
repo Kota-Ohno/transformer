@@ -101,12 +101,6 @@ class Vocabulary:
     def __len__(self):
         return len(self.token2id)
 
-    def get_stoi(self):
-        return self.token2id
-
-    def get_itos(self):
-        return self.id2token
-
     # __getitem__メソッドを追加
     def __getitem__(self, token):
         return self.token2id.get(token, self.token2id['<unk>'])
@@ -126,5 +120,4 @@ def tokens_to_ids(tokens, vocabulary):
     return [vocabulary[token] for token in tokens]
 
 def ids_to_tokens(ids, vocabulary):
-    itos = vocabulary.get_itos()
-    return [itos[id] for id in ids]
+    return [vocabulary.id2token[id] for id in ids]
