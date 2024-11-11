@@ -26,6 +26,25 @@ def batch_generator(data, batch_size):
     for i in range(0, len(data), batch_size):
         yield data[i:i + batch_size]
 
+def process_batch_data(data_src, data_tgt, base_vocab, dest_vocab, batch_size, data_type="train"):
+    token_ids = []
+    total_batches = len(data_src) // batch_size + 1
+    
+    for batch_idx, (batch_src, batch_tgt) in enumerate(zip(
+        batch_generator(data_src, batch_size),
+        batch_generator(data_tgt, batch_size)
+    )):
+        try:
+            batch_ids = [(tokens_to_ids(src, base_vocab), tokens_to_ids(tgt, dest_vocab))
+                        for src, tgt in zip(batch_src, batch_tgt)]
+            token_ids.extend(batch_ids)
+            if (batch_idx + 1) % 10 == 0:
+                print(f"{data_type}データの処理進捗: {batch_idx + 1}/{total_batches}バッチ完了")
+        except Exception as e:
+            print(f"バッチ{batch_idx}の処理中にエラーが発生: {str(e)}")
+            raise
+    return token_ids
+
 def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_train, path_val, batch_size=TOKENIZE_BATCH_SIZE):
     # バッチ処理の実装
     print("======= tokenize now ======")
@@ -59,13 +78,26 @@ def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_t
     torch.save(destination_vocabulary, vocab_output_path)
     print("======= save vocabulary finished ======")
 
-    # トークンからインデックスへのマッピングを一度取得
-    token_ids_train = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) 
-                       for src, tgt in zip(tokenized_train_src, tokenized_train_tgt)]
+    token_ids_train = process_batch_data(
+        tokenized_train_src,
+        tokenized_train_tgt,
+        base_vocabulary,
+        destination_vocabulary,
+        TOKENIZE_BATCH_SIZE,
+        "train"
+    )
+
     save_tokenized_data(token_ids_train, path_train)
 
-    token_ids_val = [(tokens_to_ids(src, base_vocabulary), tokens_to_ids(tgt, destination_vocabulary)) 
-                     for src, tgt in zip(tokenized_val_src, tokenized_val_tgt)]
+    token_ids_val = process_batch_data(
+        tokenized_val_src,
+        tokenized_val_tgt,
+        base_vocabulary,
+        destination_vocabulary,
+        TOKENIZE_BATCH_SIZE,
+        "validation"
+    )
+
     save_tokenized_data(token_ids_val, path_val)
 
     return token_ids_train, token_ids_val
