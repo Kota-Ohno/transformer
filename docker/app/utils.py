@@ -21,6 +21,8 @@ def validate(model, val_loader, criterion, device, output_dim):
     with torch.no_grad():
         for X_batch, y_batch in val_loader:
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
+            if torch.cuda.is_available():  # デバッグ用のメモリ使用量ログ
+                print(f'GPU memory: {torch.cuda.memory_allocated() / 1024**2:.2f}MB')
             decoder_output = model(X_batch, y_batch)
             loss = criterion(decoder_output.view(-1, output_dim), y_batch.view(-1))
             total_val_loss += loss.item()
