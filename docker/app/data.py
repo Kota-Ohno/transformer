@@ -3,6 +3,9 @@ import torch.utils.data
 from torch.utils.data import DataLoader
 from collections import Counter
 import spacy
+import os
+import sentencepiece as spm
+import re
 
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
@@ -37,16 +40,15 @@ def pad_inner_seq(seq, pad_token, max_length):
 
 def collate_fn(batch):
     X, Y = zip(*batch)
-    
+
     # データセット全体で最長のシーケンス長を取得
     max_length_X = max(len(x) for x in X)
     max_length_Y = max(len(y) for y in Y)
-    max_length = max(max_length_X, max_length_Y)
-    
-    # 各シーケンス内のトークンリストをパディング
-    X_padded = [pad_inner_seq(x, 0, max_length) for x in X]
-    Y_padded = [pad_inner_seq(y, 0, max_length) for y in Y]
-    
+
+    # 入力と出力で別々の長さでパディング
+    X_padded = [pad_inner_seq(x, 0, max_length_X) for x in X]
+    Y_padded = [pad_inner_seq(y, 0, max_length_Y) for y in Y]
+
     # テンソルに変換
     X_tensor = torch.tensor(X_padded, dtype=torch.long)
     Y_tensor = torch.tensor(Y_padded, dtype=torch.long)
@@ -56,6 +58,76 @@ def collate_fn(batch):
 # データローダーを作成
 def create_data_loader(dataset, batch_size):
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+
+# テキスト正規化
+def normalize_text(text, lang):
+    """基本的なテキスト正規化を行います"""
+    # 小文字化（英語のみ）
+    if lang == "en_US":
+        text = text.lower()
+
+    # 空白の正規化
+    text = re.sub(r'\s+', ' ', text)
+
+    # 数字の正規化
+    text = re.sub(r'\d+', '0', text)
+
+    # 句読点の周囲に空白を追加（英語のみ）
+    if lang == "en_US":
+        text = re.sub(r'([.,!?;:])', r' \1 ', text)
+        text = re.sub(r'\s+', ' ', text)  # 再度空白を正規化
+
+    return text.strip()
+
+# sentencepieceモデルのトレーニングと保存
+def train_sentencepiece(texts, model_prefix, vocab_size=8000, model_type="bpe"):
+    """
+    sentencepieceモデルをトレーニングします。
+
+    Args:
+        texts (list): トレーニングテキストのリスト
+        model_prefix (str): モデルファイルのプレフィックス
+        vocab_size (int): 語彙サイズ
+        model_type (str): モデルタイプ（"bpe" または "unigram"）
+    """
+    # テキストを一時ファイルに書き出し
+    with open(f"{model_prefix}.txt", "w", encoding="utf-8") as f:
+        for text in texts:
+            f.write(text + "\n")
+
+    # sentencepieceモデルのトレーニング
+    spm.SentencePieceTrainer.train(
+        input=f"{model_prefix}.txt",
+        model_prefix=model_prefix,
+        vocab_size=vocab_size,
+        model_type=model_type,
+        pad_id=0,
+        unk_id=1,
+        bos_id=2,
+        eos_id=3,
+        normalization_rule_name="nmt_nfkc"
+    )
+
+    # 一時ファイルを削除
+    if os.path.exists(f"{model_prefix}.txt"):
+        os.remove(f"{model_prefix}.txt")
+
+# sentencepieceモデルを使ったトークナイズ
+def tokenize_with_sentencepiece(text, sp_model, lang=None):
+    """
+    sentencepieceモデルを使ってテキストをトークナイズします。
+
+    Args:
+        text (str): トークナイズするテキスト
+        sp_model: sentencepieceモデル
+        lang (str, optional): 言語（正規化に使用）
+
+    Returns:
+        list: トークンのリスト
+    """
+    if lang:
+        text = normalize_text(text, lang)
+    return sp_model.encode_as_ids(text)
 
 # spacyのモデルをロード
 nlp_ja = spacy.load("ja_core_news_md")
@@ -70,7 +142,6 @@ def tokenize(sentence, lang):
         print("not yet implemented")
 
     tokens = [token.text for token in doc]
-    print(".", end="")
     return tokens
 
 class Vocabulary:
@@ -78,7 +149,7 @@ class Vocabulary:
         # 特殊トークンの初期化
         if special_tokens is None:
             special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2}
-        
+
         self.token2id = special_tokens
         self.id2token = {v: k for k, v in special_tokens.items()}
         self.next_id = len(special_tokens)
@@ -92,7 +163,7 @@ class Vocabulary:
     def build_vocab(self, counter, min_freq=1):
         # カウンターの頻度でソート
         sorted_tokens = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
-        
+
         # 頻度がmin_freq以上のトークンを追加
         for token, freq in sorted_tokens:
             if freq >= min_freq:
@@ -109,11 +180,11 @@ class Vocabulary:
 def build_vocabulary(tokenized_data, special_tokens=None):
     # トークンのカウント
     counter = Counter(token for sentence in tokenized_data for token in sentence)
-    
+
     # Vocabularyオブジェクトの作成と構築
     vocabulary = Vocabulary(special_tokens)
     vocabulary.build_vocab(counter)
-    
+
     return vocabulary
 
 def tokens_to_ids(tokens, vocabulary):

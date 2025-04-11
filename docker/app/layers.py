@@ -6,24 +6,25 @@ from config import MAX_SEQ_LENGTH
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_seq_length=MAX_SEQ_LENGTH):
         super(PositionalEncoding, self).__init__()
-        self.d_model = d_model
-        self.max_seq_length = max_seq_length
-        
-        self.encoding = nn.Parameter(self.create_encoding(), requires_grad=False)
+        # 位置エンコーディングを事前計算
+        pe = torch.zeros(max_seq_length, d_model)
+        position = torch.arange(0, max_seq_length).unsqueeze(1).float()
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)  # (1, max_seq_length, d_model)
+        self.register_buffer('pe', pe)
 
     def forward(self, x):
-        seq_length = x.size(1)
-        return x + self.encoding[:, :seq_length, :]
-
-    def create_encoding(self):
-        encoding = torch.zeros(1, self.max_seq_length, self.d_model)
-        position = torch.arange(0, self.max_seq_length).unsqueeze(1).float()
-        div_term = torch.exp(torch.arange(0, self.d_model, 2).float() * (-math.log(10000.0) / self.d_model))
-        
-        encoding[0, :, 0::2] = torch.sin(position * div_term)
-        encoding[0, :, 1::2] = torch.cos(position * div_term)
-        
-        return encoding
+        """
+        入力テンソルに位置エンコーディングを加算します。
+        Args:
+            x (torch.Tensor): 入力テンソル (batch_size, seq_len, d_model)
+        Returns:
+            torch.Tensor: 位置エンコーディングが加算されたテンソル (batch_size, seq_len, d_model)
+        """
+        # 入力シーケンス長に応じた位置エンコーディングを使用
+        return x + self.pe[:, :x.size(1), :]
 
 class FeedForwardNetwork(nn.Module):
     def __init__(self, d_model, d_ff, dropout):
@@ -31,10 +32,18 @@ class FeedForwardNetwork(nn.Module):
         self.fc1 = nn.Linear(d_model, d_ff)
         self.fc2 = nn.Linear(d_ff, d_model)
         self.dropout = nn.Dropout(dropout)
+        self.relu = nn.ReLU()  # ReLU をモジュールとして定義
 
     def forward(self, x):
+        """
+        フィードフォワードネットワークの順伝播
+        Args:
+            x (torch.Tensor): 入力テンソル (batch_size, seq_len, d_model)
+        Returns:
+            torch.Tensor: 出力テンソル (batch_size, seq_len, d_model)
+        """
         x = self.fc1(x)
-        x = nn.ReLU()(x)
+        x = self.relu(x)  # nn.Module として呼び出し
         x = self.dropout(x)
         x = self.fc2(x)
         return x
