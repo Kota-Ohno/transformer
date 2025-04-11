@@ -3,20 +3,24 @@ import sys
 import os
 import glob
 import logging
+import argparse
 from encoder import Encoder
 from decoder import Decoder
 from utils import TranslationModel, create_padding_mask, create_subsequent_mask
 from config import (
     DEVICE, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE,
     TRANSLATION_SOURCE, TRANSLATION_DESTINATION, INPUT_VOCAB_PATH,
-    OUTPUT_VOCAB_PATH, MAX_SEQ_LENGTH
+    OUTPUT_VOCAB_PATH, MAX_SEQ_LENGTH, REL_POS_MAX_DISTANCE
 )
 from data import tokenize, tokens_to_ids, ids_to_tokens
+
+# 拡張モデルをインポート
+from enhanced_model import create_enhanced_model
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def load_model(input_vocab, output_vocab):
+def load_model(input_vocab, output_vocab, enhanced=False, model_path=None):
     input_dim = len(input_vocab)
     output_dim = len(output_vocab)
 
@@ -24,22 +28,111 @@ def load_model(input_vocab, output_vocab):
     src_pad_idx = input_vocab['<pad>']
     tgt_pad_idx = output_vocab['<pad>']
 
-    encoder = Encoder(input_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE, DEVICE).to(DEVICE)
-    decoder = Decoder(output_dim, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, output_dim, DROPOUT_RATE, DEVICE).to(DEVICE)
-    model = TranslationModel(encoder, decoder, src_pad_idx, tgt_pad_idx, DEVICE).to(DEVICE)
+    # モデルパスを決定
+    if model_path:
+        # 指定されたモデルパスを使用
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"指定されたモデルファイルが見つかりません: {model_path}")
+        logging.info(f"指定されたモデルを使用します: {model_path}")
+    else:
+        # modelsディレクトリから最新のモデルファイル名を取得
+        model_files = glob.glob('models/*.pth')
+        # 語彙ファイルを除外
+        model_files = [f for f in model_files if not f.endswith(('vocab_input.pth', 'vocab_output.pth'))]
+        if not model_files:
+            raise FileNotFoundError("学習済みモデルファイルが見つかりません。'models/' ディレクトリを確認してください。")
+        model_filename = max(model_files, key=os.path.getctime)  # 最新のファイルを選択
+        model_path = os.path.join("models", os.path.basename(model_filename))
+        logging.info(f"最新のモデルを使用します: {model_path}")
 
-    # modelsディレクトリから最新のモデルファイル名を取得
-    model_files = glob.glob('models/*.pth')
-    # 語彙ファイルを除外
-    model_files = [f for f in model_files if not f.endswith(('vocab_input.pth', 'vocab_output.pth'))]
-    if not model_files:
-        raise FileNotFoundError("学習済みモデルファイルが見つかりません。'models/' ディレクトリを確認してください。")
-    model_filename = max(model_files, key=os.path.getctime)  # 最新のファイルを選択
+    # モデルの読み込み
+    logging.info(f"モデルをロード中: {model_path}")
+    checkpoint = torch.load(model_path, map_location=DEVICE)
 
-    # パス結合
-    model_path = os.path.join("models", os.path.basename(model_filename))
-    logging.info(f"Loading model from: {model_path}")
-    model.load_state_dict(torch.load(model_path, map_location=DEVICE))  # DEVICEにマップ
+    # 保存されたモデル設定を読み込む
+    saved_config = None
+    if isinstance(checkpoint, dict):
+        if 'model_config' in checkpoint:
+            saved_config = checkpoint['model_config']
+            logging.info(f"保存された設定を使用します: {saved_config}")
+
+            # 必要な設定値を取得
+            hidden_size = saved_config.get('HIDDEN_SIZE', HIDDEN_SIZE)
+            num_heads = saved_config.get('NUM_HEADS', NUM_HEADS)
+            num_layers = saved_config.get('NUM_LAYERS', NUM_LAYERS)
+            d_ff = saved_config.get('D_FF', D_FF)
+            dropout_rate = saved_config.get('DROPOUT_RATE', DROPOUT_RATE)
+            rel_pos_max_distance = saved_config.get('REL_POS_MAX_DISTANCE', REL_POS_MAX_DISTANCE)
+        else:
+            # 設定情報がない場合は現在の設定を使用
+            hidden_size = HIDDEN_SIZE
+            num_heads = NUM_HEADS
+            num_layers = NUM_LAYERS
+            d_ff = D_FF
+            dropout_rate = DROPOUT_RATE
+            rel_pos_max_distance = REL_POS_MAX_DISTANCE
+
+            # これが古いモデルで、NUM_LAYERSの不一致による可能性があるかチェック
+            if 'model_state_dict' in checkpoint:
+                # モデルの状態辞書からレイヤー数を推定
+                encoder_layers = 0
+                decoder_layers = 0
+                for key in checkpoint['model_state_dict'].keys():
+                    if '.encoder.layers.' in key:
+                        layer_num = int(key.split('.encoder.layers.')[1].split('.')[0])
+                        encoder_layers = max(encoder_layers, layer_num + 1)
+                    if '.decoder.layers.' in key:
+                        layer_num = int(key.split('.decoder.layers.')[1].split('.')[0])
+                        decoder_layers = max(decoder_layers, layer_num + 1)
+
+                if encoder_layers > 0:
+                    logging.info(f"モデル状態辞書から推定したレイヤー数: {encoder_layers}")
+                    num_layers = encoder_layers
+    else:
+        # 従来の形式の場合は現在の設定を使用
+        hidden_size = HIDDEN_SIZE
+        num_heads = NUM_HEADS
+        num_layers = NUM_LAYERS
+        d_ff = D_FF
+        dropout_rate = DROPOUT_RATE
+        rel_pos_max_distance = REL_POS_MAX_DISTANCE
+
+    if enhanced:
+        # 拡張モデルを作成
+        logging.info("拡張モデルを使用します")
+        model = create_enhanced_model(
+            input_dim=input_dim,
+            output_dim=output_dim,
+            hidden_dim=hidden_size,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            ff_dim=d_ff,
+            src_pad_idx=src_pad_idx,
+            tgt_pad_idx=tgt_pad_idx,
+            dropout=dropout_rate,
+            device=DEVICE,
+            max_dist=rel_pos_max_distance
+        )
+    else:
+        # 標準モデルを作成
+        logging.info("標準モデルを使用します")
+        encoder = Encoder(input_dim, hidden_size, num_heads, num_layers, d_ff, dropout_rate, DEVICE).to(DEVICE)
+        decoder = Decoder(output_dim, hidden_size, num_heads, num_layers, d_ff, output_dim, dropout_rate, DEVICE).to(DEVICE)
+        model = TranslationModel(encoder, decoder, src_pad_idx, tgt_pad_idx, DEVICE).to(DEVICE)
+
+    # チェックポイントがdict形式で'model_state_dict'キーを持っている場合は取り出す
+    try:
+        if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+            model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            # 従来の形式（モデルの状態辞書が直接保存されている場合）
+            model.load_state_dict(checkpoint)
+    except Exception as e:
+        logging.error(f"モデルの読み込みに失敗しました: {e}")
+        logging.error("モデルのアーキテクチャと保存されたモデルの設定が一致していない可能性があります。")
+        logging.error(f"使用した設定: hidden_size={hidden_size}, num_heads={num_heads}, num_layers={num_layers}")
+        raise
+
     model.eval()
     return model
 
@@ -222,10 +315,28 @@ def predict(model, input_tensor, input_vocab, output_vocab, max_len=MAX_SEQ_LENG
     return best_tokens
 
 def main():
+    # コマンドライン引数のパース
+    parser = argparse.ArgumentParser(description='Transformer翻訳モデルによる推論')
+    parser.add_argument('--model', type=str, help='使用するモデルファイルのパス', default='models/best_model_20250411.pth')
+    parser.add_argument('--enhanced', action='store_true', help='拡張モデルを使用する')
+    args = parser.parse_args()
+
+    # モデルパスの修正（READMEの指示が古い場合の対応）
+    if args.model == 'models/best_model.pth':
+        logging.info("READMEで指定されたモデルパスが古いため、利用可能なモデルに置き換えます")
+        # 最新の日付付きモデルファイルを探す
+        model_files = [f for f in glob.glob('models/best_model_*.pth')]
+        if model_files:
+            latest_model = max(model_files, key=os.path.getctime)
+            args.model = latest_model
+            logging.info(f"最新のモデルを使用します: {args.model}")
+        else:
+            args.model = 'models/best_model_20250411.pth'  # フォールバックとして特定のバージョンを指定
+
     input_vocab = load_vocab(INPUT_VOCAB_PATH)
     output_vocab = load_vocab(OUTPUT_VOCAB_PATH)
     try:
-        model = load_model(input_vocab, output_vocab)
+        model = load_model(input_vocab, output_vocab, enhanced=args.enhanced, model_path=args.model)
     except FileNotFoundError as e:
         logging.error(f"エラー: {e}")
         sys.exit(1)

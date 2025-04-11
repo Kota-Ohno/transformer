@@ -185,7 +185,8 @@ def setup_checkpointing_directory():
     os.makedirs(checkpoint_dir, exist_ok=True)
     return checkpoint_dir
 
-def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is_best=False):
+def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is_best=False,
+                  model_hidden_size=None, model_num_heads=None, model_num_layers=None):
     """
     モデルのチェックポイントを保存します
 
@@ -197,11 +198,37 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         val_loss: 検証損失
         bleu_score: BLEUスコア
         is_best: 最良モデルかどうか
+        model_hidden_size: 実際に使用した隠れ層のサイズ
+        model_num_heads: 実際に使用したアテンションヘッドの数
+        model_num_layers: 実際に使用したレイヤー数
     """
     checkpoint_dir = setup_checkpointing_directory()
 
     # 現在の日付を取得
     current_date = datetime.now().strftime("%Y%m%d")
+
+    # モデル設定情報を取得
+    # モデルからhidden_size, num_heads, num_layersなどを取得
+    if hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
+        num_layers = len(model.encoder.layers)
+    else:
+        num_layers = NUM_LAYERS
+
+    # 引数で渡された値があれば優先して使用
+    hidden_size = model_hidden_size or HIDDEN_SIZE
+    num_heads = model_num_heads or NUM_HEADS
+    num_layers = model_num_layers or num_layers
+
+    # モデル設定を辞書に保存
+    model_config = {
+        'HIDDEN_SIZE': hidden_size,
+        'NUM_HEADS': num_heads,
+        'NUM_LAYERS': num_layers,
+        'D_FF': D_FF,
+        'DROPOUT_RATE': DROPOUT_RATE,
+        'MAX_SEQ_LENGTH': MAX_SEQ_LENGTH,
+        'REL_POS_MAX_DISTANCE': REL_POS_MAX_DISTANCE
+    }
 
     # チェックポイント情報を準備
     checkpoint = {
@@ -211,7 +238,8 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
         'val_loss': val_loss,
         'bleu_score': bleu_score,
-        'date': current_date
+        'date': current_date,
+        'model_config': model_config  # モデル設定情報を追加
     }
 
     # 定期的なチェックポイントを保存
@@ -225,7 +253,7 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         torch.save(checkpoint, best_model_path)
         logging.info(f"最良モデルを保存しました: {best_model_path}")
 
-def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
+def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, update_globals=True):
     """
     チェックポイントからモデルを読み込みます
 
@@ -234,9 +262,10 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
         model: モデル
         optimizer: オプティマイザ（オプション）
         scheduler: スケジューラ（オプション）
+        update_globals: グローバル変数を更新するかどうか（デフォルトはTrue）
 
     Returns:
-        モデル、エポック、検証損失、BLEUスコア
+        モデル、エポック、検証損失、BLEUスコア、モデル設定（辞書）
     """
     try:
         logging.info(f"チェックポイントを読み込んでいます: {checkpoint_path}")
@@ -254,13 +283,40 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
         val_loss = checkpoint.get('val_loss', float('inf'))
         bleu_score = checkpoint.get('bleu_score', 0.0)
 
+        # モデル設定情報を取得
+        model_config = checkpoint.get('model_config', {})
+
+        # グローバル変数の更新（オプション）
+        if update_globals and model_config:
+            global HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE
+
+            if 'HIDDEN_SIZE' in model_config:
+                HIDDEN_SIZE = model_config['HIDDEN_SIZE']
+                logging.info(f"HIDDEN_SIZEを{HIDDEN_SIZE}に更新しました")
+
+            if 'NUM_HEADS' in model_config:
+                NUM_HEADS = model_config['NUM_HEADS']
+                logging.info(f"NUM_HEADSを{NUM_HEADS}に更新しました")
+
+            if 'NUM_LAYERS' in model_config:
+                NUM_LAYERS = model_config['NUM_LAYERS']
+                logging.info(f"NUM_LAYERSを{NUM_LAYERS}に更新しました")
+
+            if 'D_FF' in model_config:
+                D_FF = model_config['D_FF']
+                logging.info(f"D_FFを{D_FF}に更新しました")
+
+            if 'DROPOUT_RATE' in model_config:
+                DROPOUT_RATE = model_config['DROPOUT_RATE']
+                logging.info(f"DROPOUT_RATEを{DROPOUT_RATE}に更新しました")
+
         logging.info(f"チェックポイントを読み込みました (エポック {epoch}, 検証損失 {val_loss:.4f}, BLEU {bleu_score:.4f})")
-        return model, epoch, val_loss, bleu_score
+        return model, epoch, val_loss, bleu_score, model_config
 
     except Exception as e:
         logging.error(f"チェックポイントの読み込みに失敗しました: {e}")
         traceback.print_exc()
-        return model, 0, float('inf'), 0.0
+        return model, 0, float('inf'), 0.0, {}
 
 def find_latest_checkpoint():
     """
@@ -454,7 +510,7 @@ def main():
         if args.resume or args.checkpoint:
             checkpoint_path = args.checkpoint if args.checkpoint else find_latest_checkpoint()
             if checkpoint_path:
-                model, start_epoch, best_val_loss, best_bleu_score = load_checkpoint(
+                model, start_epoch, best_val_loss, best_bleu_score, model_config = load_checkpoint(
                     checkpoint_path, model, optimizer, scheduler
                 )
                 start_epoch += 1  # 次のエポックから開始
@@ -615,7 +671,10 @@ def main():
             # チェックポイントの保存
             save_checkpoint(
                 model, optimizer, scheduler, epoch, val_loss, bleu_score,
-                is_best=(val_loss < best_val_loss or bleu_score > best_bleu_score)
+                is_best=(val_loss < best_val_loss or bleu_score > best_bleu_score),
+                model_hidden_size=model_hidden_size,
+                model_num_heads=model_num_heads,
+                model_num_layers=model_num_layers
             )
 
             # Early Stoppingのチェック (BLEUスコアも考慮)
