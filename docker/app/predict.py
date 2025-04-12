@@ -4,6 +4,7 @@ import os
 import glob
 import logging
 import argparse
+import gc  # ガベージコレクション用
 from encoder import Encoder
 from decoder import Decoder
 from utils import TranslationModel, create_padding_mask, create_subsequent_mask
@@ -143,7 +144,7 @@ def preprocess_input(sentence, input_vocab):
     try:
         tokens = tokenize(sentence, TRANSLATION_SOURCE)
         token_ids = tokens_to_ids(tokens, input_vocab)
-        return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
+        return torch.tensor([token_ids], dtype=torch.long)
     except KeyError as e:
         logging.error(f"エラー: 未知の単語が含まれています: {e}")
         # 未知の単語をUNKトークンに置き換える
@@ -158,20 +159,19 @@ def handle_unknown_tokens(sentence, input_vocab):
         tokens = tokenize(sentence, TRANSLATION_SOURCE)
         token_ids = []
         for token in tokens:
-            if token in input_vocab.token2id:
-                token_ids.append(input_vocab.token2id[token])
+            if token in input_vocab:
+                token_ids.append(input_vocab[token])
             else:
                 logging.warning(f"未知トークン '{token}' を <unk> に置き換えます")
-                token_ids.append(input_vocab.token2id['<unk>'])
-        return torch.tensor([token_ids], dtype=torch.long).to(DEVICE)
+                token_ids.append(input_vocab['<unk>'])
+        return torch.tensor([token_ids], dtype=torch.long)
     except Exception as e:
         logging.error(f"未知トークン処理中にエラーが発生しました: {e}")
         return None
 
 def predict(model, input_tensor, input_vocab, output_vocab, max_len=MAX_SEQ_LENGTH, beam_size=5, alpha=0.7):
     """
-    改良版ビームサーチで高品質な翻訳を生成する関数。
-    キャッシュを活用して計算を効率化し、長さ正規化とN-gramペナルティを導入。
+    ビームサーチを使用して翻訳を生成する関数。
 
     Args:
         model: 翻訳モデル
@@ -185,126 +185,110 @@ def predict(model, input_tensor, input_vocab, output_vocab, max_len=MAX_SEQ_LENG
     if input_tensor is None:
         return None
 
+    # 入力テンソルをモデルと同じデバイスに移動
+    device = next(model.parameters()).device
+    input_tensor = input_tensor.to(device)
+
+    # 評価モードに設定し、勾配計算を無効化
     model.eval()
+    torch.set_grad_enabled(False)
+
+    # メモリを節約するためにキャッシュを削除
+    if device == 'cuda':
+        torch.cuda.empty_cache()
+
+    # 特殊トークンのIDを取得
     start_token = output_vocab['<s>']
-    end_token = output_vocab.token2id.get('</s>', -1)
+    end_token = output_vocab.get('</s>', output_vocab.get('</s>', -1))
     src_pad_idx = input_vocab['<pad>']
     tgt_pad_idx = output_vocab['<pad>']
 
-    # シーケンス生成中に重複するN-gramに対するペナルティを設定
-    ngram_size = 3
-    beta = 0.5  # N-gramペナルティの強さ
-
-    # エンコーダー処理とソースマスク (一度だけ計算)
+    # エンコーダー処理とソースマスク
     with torch.no_grad():
-        # ソースパディングマスク生成
-        src_mask = create_padding_mask(input_tensor, src_pad_idx).to(DEVICE)
-        encoder_output = model.encoder(input_tensor, src_mask)
+        src_mask = create_padding_mask(input_tensor, src_pad_idx).to(device)
+        try:
+            encoder_output = model.encoder(input_tensor, src_mask)
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                logging.warning("メモリ不足のため、入力を分割して処理します")
+                max_safe_length = min(100, input_tensor.size(1) // 2)
+                input_tensor = input_tensor[:, :max_safe_length]
+                src_mask = create_padding_mask(input_tensor, src_pad_idx).to(device)
+                torch.cuda.empty_cache()
+                encoder_output = model.encoder(input_tensor, src_mask)
+            else:
+                raise
 
-    # 初期ビーム
-    # 各ビームは [トークンIDのリスト, 累積対数確率, 完了フラグ, エンコーダキャッシュ, N-gramカウント]
-    beams = [[
+    # ビームの初期化
+    beams = [(
         [start_token],  # トークンシーケンス
-        0.0,            # 累積スコア
-        False,          # 完了フラグ
-        [None] * len(model.decoder.layers),  # デコーダーキャッシュ
-        {}              # N-gramカウント（重複防止用）
-    ]]
+        0.0,  # スコア
+        False  # 完了フラグ
+    )]
 
     # ビームサーチループ
-    for i in range(max_len):
-        if i > 0 and all(beam[2] for beam in beams):
+    for _ in range(max_len):
+        if all(beam[2] for beam in beams):
             break  # すべてのビームが完了していれば終了
 
         candidates = []
-
-        for beam_tokens, beam_score, is_finished, beam_cache, ngram_counts in beams:
+        for beam_tokens, beam_score, is_finished in beams:
             if is_finished:
-                candidates.append([beam_tokens, beam_score, True, beam_cache, ngram_counts])
+                candidates.append((beam_tokens, beam_score, True))
                 continue
 
             # デコーダー入力を準備
-            decoder_input = torch.tensor([beam_tokens[-1:]], dtype=torch.long, device=DEVICE)  # 新しいトークンだけを入力
+            decoder_input = torch.tensor([beam_tokens], dtype=torch.long, device=device)
 
-            # もし特殊なトークンがあれば直接候補に追加
-            if beam_tokens[-1] == end_token:
-                candidates.append([beam_tokens, beam_score, True, beam_cache, ngram_counts])
-                continue
+            # マスクを生成
+            tgt_mask = create_subsequent_mask(decoder_input).to(device)
+            tgt_pad_mask = create_padding_mask(decoder_input, tgt_pad_idx).to(device)
+            combined_mask = torch.logical_and(
+                tgt_pad_mask.expand(-1, -1, decoder_input.size(1), -1),
+                tgt_mask
+            )
 
-            # マスク生成
-            full_sequence_len = len(beam_tokens)
-            dummy_sequence = torch.ones((1, full_sequence_len), dtype=torch.long, device=DEVICE)
-
-            tgt_sub_mask = create_subsequent_mask(dummy_sequence).to(DEVICE)
-            tgt_pad_mask = create_padding_mask(dummy_sequence, tgt_pad_idx).to(DEVICE)
-            tgt_mask = tgt_pad_mask.expand(-1, -1, dummy_sequence.size(1), -1) & tgt_sub_mask
-
+            # デコーダー出力を取得
             with torch.no_grad():
-                # デコーダー実行（キャッシュ利用）
-                decoder_output, new_cache = model.decoder(
-                    decoder_input, encoder_output,
-                    tgt_mask[:, :, -1:, :full_sequence_len],
-                    src_mask,
-                    cache=beam_cache
+                decoder_output, _ = model.decoder(
+                    decoder_input,
+                    encoder_output,
+                    combined_mask,
+                    src_mask
                 )
 
-            # 次のトークンの確率を取得
-            next_token_logits = decoder_output[:, -1, :]  # (1, vocab_size)
+            # 最後の位置の出力に対して確率を計算
+            next_token_logits = decoder_output[:, -1, :]
             next_token_log_probs = torch.log_softmax(next_token_logits, dim=-1)
 
-            # 上位beam_size個の次トークンを取得
-            topk_log_probs, topk_indices = next_token_log_probs[0].topk(beam_size * 2)  # 2倍のトークンを候補に
+            # 上位k個の次トークンを取得
+            topk_log_probs, topk_indices = next_token_log_probs[0].topk(beam_size)
 
-            # 各候補を候補リストに追加
+            # 各候補を追加
             for log_prob, token_idx in zip(topk_log_probs, topk_indices):
-                token_idx = token_idx.item()
-                new_tokens = beam_tokens + [token_idx]
+                new_tokens = beam_tokens + [token_idx.item()]
+                new_score = beam_score + log_prob.item()
+                is_end = token_idx.item() == end_token
+                candidates.append((new_tokens, new_score, is_end))
 
-                # N-gramペナルティの計算
-                # 新しいN-gramを作成し、重複をチェック
-                new_ngram_counts = ngram_counts.copy()
-                ngram_penalty = 0.0
+        # 長さ正規化を適用してスコアを計算
+        normalized_candidates = []
+        for tokens, score, is_end in candidates:
+            length_penalty = ((5 + len(tokens)) / 6) ** alpha
+            normalized_score = score / length_penalty
+            normalized_candidates.append((tokens, normalized_score, is_end))
 
-                # 現在のN-gramを計算し、ペナルティを適用
-                for n in range(1, min(ngram_size + 1, len(new_tokens))):
-                    ngram = tuple(new_tokens[-n:])
-                    if ngram in new_ngram_counts:
-                        # 重複するN-gramに対してペナルティを適用
-                        ngram_penalty += beta * new_ngram_counts[ngram]
-                        new_ngram_counts[ngram] += 1
-                    else:
-                        new_ngram_counts[ngram] = 1
+        # 上位beam_size個を選択
+        normalized_candidates.sort(key=lambda x: x[1], reverse=True)
+        beams = []
+        for tokens, normalized_score, is_end in normalized_candidates[:beam_size]:
+            # 元のスコアを復元
+            length_penalty = ((5 + len(tokens)) / 6) ** alpha
+            original_score = normalized_score * length_penalty
+            beams.append((tokens, original_score, is_end))
 
-                # スコア計算（対数確率 - N-gramペナルティ）
-                new_score = beam_score + log_prob.item() - ngram_penalty
-
-                # 終了トークンの場合はフラグを立てる
-                is_end = token_idx == end_token if end_token != -1 else False
-
-                candidates.append([new_tokens, new_score, is_end, new_cache, new_ngram_counts])
-
-        # スコア計算に長さ正規化を適用
-        for i, (beam_tokens, beam_score, _, _, _) in enumerate(candidates):
-            # 長さ正規化 (length penalty)
-            lp = ((5 + len(beam_tokens)) / 6) ** alpha
-            normalized_score = beam_score / lp
-            candidates[i][1] = normalized_score  # 正規化スコアで一時的に置き換え
-
-        # すべての候補から正規化スコアで上位beam_size個を選択
-        candidates.sort(key=lambda x: x[1], reverse=True)
-        candidates = candidates[:beam_size]
-
-        # 元のスコアを復元
-        for i, (beam_tokens, beam_score, _, _, _) in enumerate(candidates):
-            lp = ((5 + len(beam_tokens)) / 6) ** alpha
-            original_score = beam_score * lp
-            candidates[i][1] = original_score
-
-        beams = candidates
-
-    # 最高スコアのビームを選択
-    best_beam = max(beams, key=lambda x: x[1])
-    best_tokens = best_beam[0]
+    # 最良の結果を選択
+    best_tokens = max(beams, key=lambda x: x[1])[0]
 
     # 開始トークンと終了トークンを除去
     if best_tokens[0] == start_token:

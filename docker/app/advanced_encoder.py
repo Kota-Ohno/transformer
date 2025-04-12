@@ -137,13 +137,20 @@ class EnhancedEncoder(nn.Module):
         Returns:
             torch.Tensor: エンコードされた出力 (batch_size, seq_len, hidden_dim)
         """
-        # 入力の検証
-        if (x >= self.embedding.num_embeddings).any():
-            raise ValueError("入力にエンベディングテーブルの範囲を超える値が含まれています")
+        # 入力の検証（範囲外のインデックスを防止）
+        x = torch.clamp(x, 0, self.embedding.num_embeddings - 1)
 
         # 入力埋め込み
         x = self.embedding(x)
         x = self.dropout(x)
+
+        # シーケンス長を制限（メモリ効率化のため）
+        max_seq_length = 128
+        if x.size(1) > max_seq_length:
+            x = x[:, :max_seq_length, :]
+            if mask is not None:
+                # マスクも調整
+                mask = mask[:, :, :max_seq_length, :max_seq_length]
 
         # レイヤードロップアウトの準備
         layer_dropout = LAYER_DROPOUT if self.training else 0.0

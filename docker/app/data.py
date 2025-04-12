@@ -191,4 +191,11 @@ def tokens_to_ids(tokens, vocabulary):
     return [vocabulary[token] for token in tokens]
 
 def ids_to_tokens(ids, vocabulary):
-    return [vocabulary.id2token[id] for id in ids]
+    # vocabularyがVocabularyクラスのインスタンスである場合
+    if hasattr(vocabulary, 'id2token'):
+        return [vocabulary.id2token[id] for id in ids]
+    # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
+    else:
+        # トークンとIDのマッピングを反転して使用
+        id_to_token = {v: k for k, v in vocabulary.items()}
+        return [id_to_token.get(id, '<unk>') for id in ids]
