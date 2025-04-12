@@ -100,7 +100,7 @@ class EnhancedTranslationModel(nn.Module):
             )
 
             # エンコーダ出力に適用するマスク
-            memory_mask = src_mask.expand(-1, -1, tgt_input.size(1), -1)
+            memory_mask = src_mask.expand(-1, -1, tgt_input.size(1), src.size(1))
 
             # エンコーダ順伝播
             encoder_output = self.encoder(src, src_mask)
@@ -170,7 +170,9 @@ class EnhancedTranslationModel(nn.Module):
                         tgt_pad_mask.expand(-1, -1, tgt_tokens.size(1), -1),
                         tgt_mask
                     )
-                    memory_mask = src_mask.expand(-1, -1, tgt_tokens.size(1), -1)
+
+                    # 修正: メモリマスクの形状を適切に設定
+                    memory_mask = src_mask.expand(-1, -1, tgt_tokens.size(1), src.size(1))
 
                     # デコーダーの順伝播
                     decoder_output, cache = self.decoder(
