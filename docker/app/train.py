@@ -108,12 +108,28 @@ def truncate_long_sequences(X_batch, y_batch, max_seq_length):
     Returns:
         tuple: (切り詰められたX_batch, 切り詰められたy_batch)
     """
+    # テンソルのサイズと次元を検証
+    if X_batch.dim() < 2 or y_batch.dim() < 2:
+        logging.warning(f"入力テンソルの次元が小さすぎます: X_batch: {X_batch.dim()}, y_batch: {y_batch.dim()}")
+        return X_batch, y_batch
+
+    # 入力情報をログに記録（デバッグ用）
+    if logging.getLogger().isEnabledFor(logging.DEBUG):
+        logging.debug(f"シーケンス長: X={X_batch.size(1)}, y={y_batch.size(1)}, max={max_seq_length}")
+        try:
+            logging.debug(f"X_batch範囲: min={X_batch.min().item()}, max={X_batch.max().item()}")
+            logging.debug(f"y_batch範囲: min={y_batch.min().item()}, max={y_batch.max().item()}")
+        except Exception as e:
+            logging.debug(f"バッチ統計計算中のエラー: {e}")
+
     # ソースシーケンスの切り詰め
     if X_batch.size(1) > max_seq_length:
+        logging.info(f"ソースシーケンスを切り詰めます: {X_batch.size(1)} → {max_seq_length}")
         X_batch = X_batch[:, :max_seq_length]
 
     # ターゲットシーケンスの切り詰め
     if y_batch.size(1) > max_seq_length:
+        logging.info(f"ターゲットシーケンスを切り詰めます: {y_batch.size(1)} → {max_seq_length}")
         y_batch = y_batch[:, :max_seq_length]
 
     return X_batch, y_batch
@@ -305,6 +321,111 @@ def find_latest_checkpoint():
     latest_checkpoint = max(checkpoints, key=os.path.getctime)
     return latest_checkpoint
 
+def train(model, train_loader, optimizer, criterion, scheduler, scaler, device):
+    """
+    1エポックのトレーニングを実行する関数
+
+    Args:
+        model: トレーニングするモデル
+        train_loader: トレーニングデータのデータローダー
+        optimizer: オプティマイザ
+        criterion: 損失関数
+        scheduler: 学習率スケジューラ
+        scaler: 混合精度トレーニング用のスケーラー
+        device: 使用するデバイス
+
+    Returns:
+        平均トレーニング損失
+    """
+    model.train()
+    epoch_loss = 0
+    total_batches = len(train_loader)
+    last_log_time = time.time()
+    valid_batch_count = 0
+    max_seq_length = CONFIG["MAX_SEQ_LENGTH"]
+
+    for i, (src, tgt) in enumerate(train_loader):
+        try:
+            # シーケンスが長すぎる場合は切り詰める
+            src, tgt = truncate_long_sequences(src, tgt, max_seq_length)
+
+            # 入力と出力をデバイスに移動
+            src = src.to(device)
+            tgt = tgt.to(device)
+
+            # サイズ情報をログに記録
+            if i == 0:
+                logging.info(f"バッチサイズ: {src.size(0)}, ソースシーケンス長: {src.size(1)}, ターゲットシーケンス長: {tgt.size(1)}")
+
+            # テンソルサイズの検証
+            if src.size(0) < 1 or tgt.size(0) < 1:
+                logging.warning(f"バッチサイズが小さすぎます: src={src.size(0)}, tgt={tgt.size(0)}")
+                continue
+
+            # ターゲットの入力と出力を準備
+            tgt_input = tgt[:, :-1]
+            tgt_output = tgt[:, 1:]
+
+            # グラデーションをゼロにリセット
+            optimizer.zero_grad()
+
+            # 混合精度トレーニングのコンテキスト
+            with autocast():
+                try:
+                    # モデルの順伝播
+                    output, _ = model(src, tgt_input)
+
+                    # 予測と実際の出力のサイズを揃える
+                    output_dim = output.shape[-1]
+                    output = output.contiguous().view(-1, output_dim)
+                    tgt_output = tgt_output.contiguous().view(-1)
+
+                    # 損失の計算
+                    loss = criterion(output, tgt_output)
+
+                except RuntimeError as e:
+                    # テンソルサイズエラー等のランタイムエラーをキャッチ
+                    if "size mismatch" in str(e) or "shape mismatch" in str(e) or "out of memory" in str(e):
+                        logging.warning(f"バッチ処理中にエラーが発生しました（バッチ {i+1}/{total_batches}）: {e}")
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()  # GPUメモリをクリア
+                        continue
+                    else:
+                        raise  # その他のエラーは再び投げる
+
+            # 損失のスケーリングと逆伝播
+            scaler.scale(loss).backward()
+
+            # グラデーションのクリッピング
+            scaler.unscale_(optimizer)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), CONFIG["GRAD_CLIP_NORM"])
+
+            # オプティマイザとスケジューラの更新
+            scaler.step(optimizer)
+            scaler.update()
+            scheduler.step()
+
+            # 損失の累積
+            epoch_loss += loss.item()
+            valid_batch_count += 1
+
+            # 定期的に進捗を表示
+            current_time = time.time()
+            if current_time - last_log_time > 10:  # 10秒ごとに表示
+                logging.info(f"バッチ {i+1}/{total_batches} 完了 ({((i+1)/total_batches*100):.1f}%)")
+                last_log_time = current_time
+
+        except Exception as e:
+            logging.error(f"バッチ処理中に予期せぬエラーが発生しました（バッチ {i+1}/{total_batches}）: {e}")
+            # スタックトレースを出力（デバッグ用）
+            import traceback
+            logging.error(traceback.format_exc())
+            # バッチをスキップして次へ
+            continue
+
+    # 平均損失を計算して返す（有効なバッチがある場合のみ）
+    return epoch_loss / max(1, valid_batch_count)
+
 def main():
     """
     翻訳モデルのトレーニングを実行する主要な関数。
@@ -380,6 +501,9 @@ def main():
         input_dim = len(input_vocab)
         output_dim = len(output_vocab)
 
+        # ボキャブラリーサイズをログに記録
+        logging.info(f"入力ボキャブラリーサイズ: {input_dim}, 出力ボキャブラリーサイズ: {output_dim}")
+
         # パディングインデックスを取得
         src_pad_idx = input_vocab['<pad>']
         tgt_pad_idx = output_vocab['<pad>']
@@ -393,6 +517,11 @@ def main():
             logging.info(f"強化版モデルを使用します（相対位置エンコーディング、最大距離: {args.rel_pos_max_dist}、GLU使用: {CONFIG['USE_GLU']}）")
         else:
             logging.info("標準のTransformerモデルを使用します")
+
+        # チェックポイントからの復元（前の処理と順序を入れ替え）
+        start_epoch = 0
+        best_val_loss = float('inf')
+        best_bleu_score = 0.0
 
         # モデルの作成
         if use_enhanced_model:
@@ -470,14 +599,11 @@ def main():
             decay_method='linear'  # 線形減衰を使用
         )
 
-        # チェックポイントからの復元（オプション）
-        start_epoch = 0
-        best_val_loss = float('inf')
-        best_bleu_score = 0.0
-
+        # チェックポイントからモデルを復元（オプション）
         if args.resume or args.checkpoint:
             checkpoint_path = args.checkpoint if args.checkpoint else find_latest_checkpoint()
             if checkpoint_path:
+                logging.info(f"チェックポイントから復元を試みます: {checkpoint_path}")
                 model, start_epoch, best_val_loss, best_bleu_score, loaded_model_config = load_checkpoint(
                     checkpoint_path, model, optimizer, scheduler
                 )
@@ -486,6 +612,7 @@ def main():
                 model_num_heads = loaded_model_config.get('NUM_HEADS', model_num_heads)
                 model_num_layers = loaded_model_config.get('NUM_LAYERS', model_num_layers)
                 start_epoch += 1  # 次のエポックから開始
+                logging.info(f"チェックポイントから復元完了: エポック {start_epoch-1}, 検証損失 {best_val_loss:.4f}, BLEU {best_bleu_score:.4f}")
             else:
                 logging.warning("チェックポイントが見つかりませんでした。トレーニングを最初から開始します。")
 
@@ -501,177 +628,110 @@ def main():
 
         # トレーニングループ
         for epoch in range(start_epoch, args.epochs):
-            start_time = time.time()
-            model.train()  # 訓練モードに設定
+            try:
+                # エポックごとのトレーニング
+                logging.info(f"エポック {epoch+1}/{args.epochs} 開始")
+                start_time = time.time()
 
-            # バッチ開始時間を初期化
-            batch_start_time = time.time()
-            total_epoch_loss = 0
-
-            # 勾配累積のためのカウンター
-            accumulation_count = 0
-
-            for i, (X_batch, y_batch) in enumerate(train_loader):
+                # トレーニング
                 try:
-                    X_batch = X_batch.to(DEVICE)
-                    y_batch = y_batch.to(DEVICE)
-
-                    # 長すぎるシーケンスを切り詰め
-                    X_batch, y_batch = truncate_long_sequences(X_batch, y_batch, CONFIG["MAX_SEQ_LENGTH"])
-
-                    # デコーダーへの入力を作成 (Teacher Forcing)
-                    # まずターゲット出力サイズを決定
-                    max_len = y_batch.size(1) - 1
-
-                    # デコーダー入力とターゲット出力を同じサイズに保つ
-                    decoder_input = y_batch[:, :max_len]
-                    start_token_tensor = torch.full(
-                        (y_batch.size(0), 1),
-                        output_vocab['<s>'],
-                        dtype=torch.long,
-                        device=DEVICE
-                    )
-                    decoder_input = torch.cat((start_token_tensor, decoder_input[:, :-1]), dim=1)
-
-                    # 損失計算用のターゲットを作成
-                    target_output = y_batch[:, 1:max_len+1]
-
-                    # 最初のバッチのみでグラデーションをゼロ初期化
-                    if accumulation_count == 0:
-                        optimizer.zero_grad()
-
-                    # 混合精度で順伝播（CUDA利用可能時のみ）
-                    if scaler:
-                        with autocast():
-                            # 順伝播 (デコーダーには decoder_input を渡す)
-                            decoder_output, _ = model(X_batch, decoder_input)
-
-                            # 損失計算 (decoder_output と target_output で計算)
-                            loss = criterion(
-                                decoder_output.view(-1, output_dim),
-                                target_output.reshape(-1)
-                            )
-
-                            # バッチサイズで正規化して勾配累積を行う
-                            loss = loss / CONFIG["ACCUMULATED_BATCHES"]
-
-                        # スケーラーで逆伝播
-                        scaler.scale(loss).backward()
+                    train_loss = train(model, train_loader, optimizer, criterion, scheduler, scaler, DEVICE)
+                    logging.info(f"トレーニング損失: {train_loss:.4f}")
+                except Exception as e:
+                    logging.error(f"トレーニング中にエラーが発生しました: {e}")
+                    logging.error(traceback.format_exc())
+                    # バッチサイズを小さくして再試行するか適切なフォールバック処理を行う
+                    if batch_size > CONFIG["MIN_BATCH_SIZE"]:
+                        new_batch_size = max(CONFIG["MIN_BATCH_SIZE"], batch_size // 2)
+                        logging.warning(f"バッチサイズを{batch_size}から{new_batch_size}に減らして再試行します")
+                        batch_size = new_batch_size
+                        train_loader = create_data_loader(train_token_ids, batch_size)
+                        val_loader = create_data_loader(val_token_ids, batch_size)
+                        continue  # 同じエポックを再試行
                     else:
-                        # CPUでの通常のトレーニング
-                        decoder_output, _ = model(X_batch, decoder_input)
-                        loss = criterion(
-                            decoder_output.view(-1, output_dim),
-                            target_output.reshape(-1)
-                        )
-                        loss = loss / CONFIG["ACCUMULATED_BATCHES"]
-                        loss.backward()
+                        logging.error("最小バッチサイズでもエラーが発生しました。トレーニングを中断します。")
+                        break
 
-                    # バッチ毎の損失を記録
-                    batch_loss = loss.item() * CONFIG["ACCUMULATED_BATCHES"]
-                    total_epoch_loss += batch_loss
+                # 検証
+                try:
+                    logging.info("検証を開始...")
+                    val_loss, bleu_score, translations = validate(
+                        model, val_loader, criterion,
+                        output_vocab, DEVICE, return_translations=True
+                    )
 
-                    # 勾配累積カウンターを更新
-                    accumulation_count += 1
+                    # サンプル翻訳をログに記録
+                    if len(translations) > 0:
+                        logging.info("翻訳サンプル:")
+                        for i, sample in enumerate(translations[:3]):  # 最初の3つのみ表示
+                            logging.info(f"サンプル {i+1}:")
+                            logging.info(f"  ソーステキスト: {sample['source']}")
+                            logging.info(f"  目標訳: {sample['target']}")
+                            logging.info(f"  モデル訳: {sample['prediction']}")
 
-                    # 指定のバッチ数たまったら勾配を適用
-                    if accumulation_count == CONFIG["ACCUMULATED_BATCHES"] or i == len(train_loader) - 1:
-                        # 勾配クリッピング
-                        if scaler:
-                            scaler.unscale_(optimizer)
+                    logging.info(f"Epoch {epoch+1}/{args.epochs} - 検証損失: {val_loss:.4f}, BLEUスコア: {bleu_score:.4f}")
 
-                        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["GRAD_CLIP_NORM"])
+                    # 検証指標をログに記録
+                    if not args.no_wandb:
+                        wandb.log({
+                            "epoch": epoch,
+                            "val_loss": val_loss,
+                            "bleu_score": bleu_score,
+                            "learning_rate": optimizer.param_groups[0]['lr']
+                        })
 
-                        # 最適化ステップ
-                        if scaler:
-                            scaler.step(optimizer)
-                            scaler.update()
-                        else:
-                            optimizer.step()
+                    # 最良モデルの保存とEarly Stopping
+                    if val_loss < best_val_loss:
+                        logging.info(f"検証損失が改善しました ({best_val_loss:.4f} -> {val_loss:.4f})。モデルを保存します...")
+                        best_val_loss = val_loss
+                        best_model_path = os.path.join("models", f"best_model_loss_{epoch+1}.pt")
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                            'val_loss': val_loss,
+                            'batch_size': batch_size,
+                            'bleu_score': bleu_score
+                        }, best_model_path)
+                        patience_counter = 0
+                    elif bleu_score > best_bleu_score:
+                        logging.info(f"BLEUスコアが改善しました ({best_bleu_score:.4f} -> {bleu_score:.4f})。モデルを保存します...")
+                        best_bleu_score = bleu_score
+                        best_model_bleu_path = os.path.join("models", f"best_model_bleu_{epoch+1}.pt")
+                        torch.save({
+                            'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
+                            'val_loss': val_loss,
+                            'batch_size': batch_size,
+                            'bleu_score': bleu_score
+                        }, best_model_bleu_path)
+                        patience_counter = 0
+                    else:
+                        patience_counter += 1
+                        logging.info(f"検証指標が改善していません。Early Stoppingカウンター: {patience_counter}/{CONFIG['PATIENCE']}")
 
-                        scheduler.step()
-
-                        # カウンターリセット
-                        accumulation_count = 0
-
-                        # より詳細なメトリクスをログに記録
-                        if not args.no_wandb:
-                            wandb.log({
-                                "batch_loss": batch_loss,
-                                "learning_rate": optimizer.param_groups[0]["lr"],
-                                "grad_norm": grad_norm.item() if isinstance(grad_norm, torch.Tensor) else grad_norm,
-                                "batch_time": time.time() - batch_start_time  # バッチ処理時間を追加
-                            })
-
-                    # 進捗状況を出力
-                    if i % 10 == 0 or i == len(train_loader) - 1:  # 10バッチごとに出力
-                        logging.info(f"Epoch [{epoch+1}/{args.epochs}] Step [{i+1}/{total_steps}], "
-                                    f"Loss: {batch_loss:.4f}, LR: {optimizer.param_groups[0]['lr']:.6f}")
-
-                    # 次のバッチの開始時間を記録
-                    batch_start_time = time.time()
+                    # Early Stopping
+                    if patience_counter >= CONFIG['PATIENCE']:
+                        logging.info(f"{CONFIG['PATIENCE']}エポック連続で改善がないため、トレーニングを早期終了します。")
+                        break
 
                 except Exception as e:
-                    logging.error(f"バッチ処理中にエラーが発生しました: {e}")
-                    traceback.print_exc()
-                    # トレーニングを続行
+                    logging.error(f"検証ステップでエラーが発生しました: {e}")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
-            # エポック終了時の平均損失
-            avg_epoch_loss = total_epoch_loss / len(train_loader)
-            if not args.no_wandb:
-                wandb.log({"epoch_loss": avg_epoch_loss})
+                # エポックごとの要約を出力
+                epoch_time = time.time() - start_time
+                logging.info(f"Epoch {epoch+1} took {epoch_time:.2f} seconds.")
 
-            # 検証部分
-            model.eval()  # 評価モードに設定
-            try:
-                val_loss, bleu_result = validate(model, val_loader, criterion, DEVICE, output_dim, output_vocab)
-
-                # 返り値がmetricsの辞書型かbleu_scoreの値かをチェック
-                if isinstance(bleu_result, dict):
-                    bleu_score = bleu_result.get("bleu", 0.0)
-                else:
-                    bleu_score = bleu_result
-
-                logging.info(f"Validation Loss: {val_loss:.4f}, BLEU Score: {bleu_score:.4f}")
-                if not args.no_wandb:
-                    wandb.log({"val_loss": val_loss, "bleu_score": bleu_score})
             except Exception as e:
-                logging.error(f"検証中にエラーが発生しました: {e}")
-                val_loss = float('inf')
-                bleu_score = 0.0
-
-            # チェックポイントの保存
-            save_checkpoint(
-                model, optimizer, scheduler, epoch, val_loss, bleu_score,
-                is_best=(val_loss < best_val_loss or bleu_score > best_bleu_score),
-                model_hidden_size=model_hidden_size,
-                model_num_heads=model_num_heads,
-                model_num_layers=model_num_layers
-            )
-
-            # Early Stoppingのチェック (BLEUスコアも考慮)
-            improved = False
-            if val_loss < best_val_loss * (1.0 - LOSS_IMPROVEMENT_THRESHOLD):  # 2%以上の改善を要求
-                best_val_loss = val_loss
-                improved = True
-                logging.info(f"検証損失が改善しました: {val_loss:.4f}")
-
-            if bleu_score > best_bleu_score + BLEU_IMPROVEMENT_THRESHOLD:  # 閾値以上の改善
-                best_bleu_score = bleu_score
-                improved = True
-                logging.info(f"BLEUスコアが改善しました: {bleu_score:.4f}")
-
-            if improved:
-                patience_counter = 0
-            else:
-                patience_counter += 1
-                if patience_counter >= CONFIG["PATIENCE"]:
-                    logging.info("Early stopping triggered")
-                    break
-
-            # エポックごとの要約を出力
-            epoch_time = time.time() - start_time
-            logging.info(f"Epoch {epoch+1} took {epoch_time:.2f} seconds.")
+                logging.error(f"エポック {epoch+1} 処理中に予期せぬエラーが発生しました: {e}")
+                logging.error(traceback.format_exc())
+                # 次のエポックに進む
+                continue
 
         # トレーニング完了
         logging.info("トレーニングが完了しました")

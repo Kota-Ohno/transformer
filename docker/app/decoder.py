@@ -6,8 +6,12 @@ from attention import MultiHeadAttention
 from torch.utils.checkpoint import checkpoint
 
 def validate_indices(x, vocab_size):
-    if (x >= vocab_size).any() or (x < 0).any():
-        raise ValueError("インデックスがエンベディングテーブルの範囲外です")
+    max_idx = x.max().item() if x.numel() > 0 else -1
+    if max_idx >= vocab_size or (x < 0).any():
+        invalid_indices = torch.where((x >= vocab_size) | (x < 0))[0]
+        out_of_range = x[invalid_indices].tolist() if len(invalid_indices) > 0 else []
+        err_msg = f"インデックスがエンベディングテーブルの範囲外です。vocab_size={vocab_size}, max_idx={max_idx}, 範囲外のインデックス: {out_of_range[:10]}"
+        raise ValueError(err_msg)
 
 class Decoder(nn.Module):
     """

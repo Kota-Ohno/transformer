@@ -129,6 +129,72 @@ class EnhancedTranslationModel(nn.Module):
 
             return empty_output, empty_cache
 
+    def predict(self, src: torch.Tensor, max_length: int = 100, device: Optional[str] = None) -> torch.Tensor:
+        """
+        ソーステキストから翻訳を生成します。
+
+        Args:
+            src (torch.Tensor): ソーステキストのテンソル [batch_size, src_len]
+            max_length (int): 生成する最大トークン数
+            device (str, optional): 使用するデバイス（Noneの場合はself.deviceを使用）
+
+        Returns:
+            torch.Tensor: 生成された翻訳トークンIDのテンソル
+        """
+        if device is None:
+            device = self.device
+
+        batch_size = src.size(0)
+
+        # シーケンス長の制限
+        if src.size(1) > self.max_seq_length:
+            src = src[:, :self.max_seq_length]
+
+        # 初期トークンとして<s>を使用
+        tgt_tokens = torch.ones(batch_size, 1).fill_(2).long().to(device)  # <s>トークンで初期化
+
+        # エンコーダー出力のキャッシュを保持
+        src_mask = create_padding_mask(src, self.src_pad_idx).to(device)
+
+        try:
+            # エンコーダー出力を計算
+            encoder_output = self.encoder(src, src_mask)
+            cache = None
+
+            with torch.no_grad():
+                for i in range(max_length):
+                    # マスクを作成
+                    tgt_mask = create_subsequent_mask(tgt_tokens).to(device)
+                    tgt_pad_mask = create_padding_mask(tgt_tokens, self.tgt_pad_idx).to(device)
+                    combined_tgt_mask = torch.logical_and(
+                        tgt_pad_mask.expand(-1, -1, tgt_tokens.size(1), -1),
+                        tgt_mask
+                    )
+                    memory_mask = src_mask.expand(-1, -1, tgt_tokens.size(1), -1)
+
+                    # デコーダーの順伝播
+                    decoder_output, cache = self.decoder(
+                        tgt_tokens, encoder_output, combined_tgt_mask, memory_mask, cache=cache
+                    )
+
+                    # 次のトークンを予測
+                    pred = decoder_output[:, -1, :]
+                    next_token = pred.argmax(dim=1, keepdim=True)
+
+                    # 予測トークンを追加
+                    tgt_tokens = torch.cat([tgt_tokens, next_token], dim=1)
+
+                    # EOSトークンが生成されたら終了
+                    if (next_token == 3).all():  # </s>トークン
+                        break
+
+            return tgt_tokens
+
+        except Exception as e:
+            logging.error(f"predict処理中にエラー発生: {e}")
+            # エラー発生時は空のテンソルを返す
+            return torch.ones(batch_size, 1).fill_(3).long().to(device)  # </s>トークンのみ
+
 
 def create_enhanced_model(input_dim: int, output_dim: int, hidden_dim: int,
                          num_heads: int, num_layers: int, ff_dim: int,

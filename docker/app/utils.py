@@ -363,103 +363,173 @@ class WarmupScheduler:
         self.decay_method = state_dict['decay_method']
         self.final_lr = state_dict['final_lr']
 
-def validate(model, val_loader, criterion, device, output_dim, output_vocab):
-    model.eval()
-    total_val_loss = 0
-    references = []
-    hypotheses = []
+def convert_ids_to_text(ids, id2word, skip_special=False):
+    """
+    トークンIDを文字列に変換します
 
-    # 逆引きボキャブラリを作成（IDからトークン文字列への変換用）
-    id_to_token = {v: k for k, v in output_vocab.items()}
+    Args:
+        ids (torch.Tensor or list): 変換するIDのリスト
+        id2word (dict): ID→単語の辞書
+        skip_special (bool): 特殊トークンをスキップするかどうか
 
-    with torch.no_grad():
-        for X_batch, y_batch in val_loader:
-            X_batch, y_batch = X_batch.to(device), y_batch.to(device)
-
-            # 長いシーケンスを切り詰め
-            if X_batch.size(1) > CONFIG["MAX_SEQ_LENGTH"]:
-                X_batch = X_batch[:, :CONFIG["MAX_SEQ_LENGTH"]]
-            if y_batch.size(1) > CONFIG["MAX_SEQ_LENGTH"]:
-                y_batch = y_batch[:, :CONFIG["MAX_SEQ_LENGTH"]]
-
-            # デコーダーへの入力とターゲットを作成
-            max_len = y_batch.size(1) - 1
-
-            decoder_input = y_batch[:, :max_len]
-            start_token_tensor = torch.full(
-                (y_batch.size(0), 1),
-                output_vocab['<s>'],
-                dtype=torch.long,
-                device=device
-            )
-            decoder_input = torch.cat((start_token_tensor, decoder_input[:, :-1]), dim=1)
-            target_output = y_batch[:, 1:max_len+1]
-
-            # 順伝播
-            decoder_output, _ = model(X_batch, decoder_input)
-
-            # 損失計算
-            loss = criterion(
-                decoder_output.view(-1, output_dim),
-                target_output.reshape(-1)
-            )
-            total_val_loss += loss.item()
-
-            # BLEU評価用のリファレンスと仮説を準備
-            # 予測の生成
-            pred_indices = decoder_output.argmax(dim=-1)
-
-            # バッチ内の各サンプルに対して
-            for i in range(X_batch.size(0)):
-                # 参照訳（ゴールド）の準備 - パディングを除去
-                ref = target_output[i].cpu().tolist()
-                ref = [token for token in ref if token != output_vocab['<pad>']]
-
-                # トークンIDを実際のトークン文字列に変換
-                ref_tokens = []
-                for token_id in ref:
-                    if token_id in id_to_token:
-                        ref_tokens.append(id_to_token[token_id])
-                    else:
-                        ref_tokens.append(f"<unknown_{token_id}>")
-
-                references.append([ref_tokens])  # BLEUはリファレンスのリストを想定
-
-                # 仮説訳（予測）の準備 - パディングを除去
-                hyp = pred_indices[i].cpu().tolist()
-                hyp = [token for token in hyp if token != output_vocab['<pad>']]
-
-                # トークンIDを実際のトークン文字列に変換
-                hyp_tokens = []
-                for token_id in hyp:
-                    if token_id in id_to_token:
-                        hyp_tokens.append(id_to_token[token_id])
-                    else:
-                        hyp_tokens.append(f"<unknown_{token_id}>")
-
-                hypotheses.append(hyp_tokens)
-
-    # 評価指標の計算
-    metrics = {}
+    Returns:
+        str: 変換されたテキスト
+    """
     try:
-        # BLEUスコア計算
-        bleu_score = calculate_bleu(references, hypotheses)
-        metrics["bleu"] = bleu_score
-        logging.info(f"BLEUスコア: {bleu_score:.4f}")
+        # テンソルの場合はリストに変換
+        if isinstance(ids, torch.Tensor):
+            ids = ids.cpu().tolist()
 
-        # SacreBLEU計算
-        sacrebleu_score = calculate_sacrebleu(references, hypotheses)
-        metrics["sacrebleu"] = sacrebleu_score
-        logging.info(f"SacreBLEUスコア: {sacrebleu_score:.4f}")
+        # IDから単語に変換
+        special_tokens = {'<pad>', '<unk>', '<s>', '</s>', '<bos>', '<eos>'}
+        words = []
+        for idx in ids:
+            # 辞書にない場合はスキップ
+            if idx not in id2word:
+                continue
+            word = id2word[idx]
+            # 特殊トークンをスキップする場合
+            if skip_special and word in special_tokens:
+                continue
+            words.append(word)
 
+        # 単語を連結して文字列にして返す
+        return ' '.join(words)
     except Exception as e:
-        logging.error(f"評価指標の計算中にエラーが発生しました: {e}")
-        # エラーが発生した場合はゼロのスコアを返す
-        metrics = {"bleu": 0, "sacrebleu": 0}
+        logging.error(f"テキスト変換エラー: {e}")
+        return ""
 
-    # 平均検証損失を返す
-    val_loss = total_val_loss / len(val_loader)
-    return val_loss, metrics["bleu"]
+def validate(model, val_loader, criterion, output_vocab, device, return_translations=True):
+    """
+    モデルの検証を行い、検証損失とBLEUスコアを計算する関数
+
+    Args:
+        model: 検証するモデル
+        val_loader: 検証データのデータローダー
+        criterion: 損失関数
+        output_vocab: 出力用語彙
+        device: 使用するデバイス
+        return_translations: 翻訳結果も返すかどうか
+
+    Returns:
+        (float, float, List): 検証損失、BLEUスコア、翻訳サンプル
+    """
+    model.eval()
+    total_loss = 0
+    batch_bleu = []
+    sample_translations = []
+    max_samples = 3  # サンプルとして保存する翻訳の数
+
+    # ID→単語の辞書を作成
+    try:
+        id2word = {v: k for k, v in output_vocab.items()}
+        pad_idx = output_vocab.get('<pad>', 0)
+    except Exception as e:
+        logging.error(f"ボキャブラリー処理エラー: {e}")
+        # デフォルト値を設定
+        id2word = {}
+        pad_idx = 0
+
+    valid_batch_count = 0
+    with torch.no_grad():
+        for i, (src, tgt) in enumerate(val_loader):
+            try:
+                # シーケンス長の制限
+                max_seq_length = CONFIG["MAX_SEQ_LENGTH"]  # configから値を取得
+                if src.size(1) > max_seq_length:
+                    src = src[:, :max_seq_length]
+                if tgt.size(1) > max_seq_length:
+                    tgt = tgt[:, :max_seq_length]
+
+                # デバイスに移動
+                src = src.to(device)
+                tgt = tgt.to(device)
+
+                # テンソルサイズの検証
+                if src.size(0) < 1 or tgt.size(0) < 1:
+                    logging.warning(f"バッチサイズが小さすぎます: src={src.size(0)}, tgt={tgt.size(0)}")
+                    continue
+
+                # デコーダー入力とターゲットを準備
+                tgt_input = tgt[:, :-1]
+                tgt_output = tgt[:, 1:]
+
+                # テンソルの形状をログに記録
+                if i == 0:
+                    logging.info(f"検証バッチ形状: src={src.shape}, tgt_input={tgt_input.shape}, tgt_output={tgt_output.shape}")
+
+                # モデルを通して予測
+                try:
+                    output, _ = model(src, tgt_input)
+
+                    # 損失計算
+                    output_dim = output.shape[-1]
+                    output = output.contiguous().view(-1, output_dim)
+                    tgt_output = tgt_output.contiguous().view(-1)
+                    loss = criterion(output, tgt_output)
+
+                    # 損失を累積
+                    total_loss += loss.item()
+                    valid_batch_count += 1
+
+                    # 推論モードで翻訳を生成（最初の数サンプルのみ）
+                    if return_translations and i < max_samples:
+                        try:
+                            if hasattr(model, 'predict'):
+                                translations = [model.predict(src[:1], max_length=100, device=device)[0]]
+                                translations = [convert_ids_to_text(ids, id2word, skip_special=True) for ids in translations]
+                            else:
+                                # predictメソッドがない場合は空の結果を返す
+                                translations = ["[predict method not available]"]
+
+                            target_text = convert_ids_to_text(tgt[0], id2word, skip_special=True)
+                            source_text = convert_ids_to_text(src[0], id2word, skip_special=True)
+
+                            sample_translations.append({
+                                'source': source_text,
+                                'target': target_text,
+                                'prediction': translations[0]
+                            })
+                        except Exception as e:
+                            logging.error(f"サンプル翻訳生成エラー: {e}")
+
+                    # BLEUスコアを計算（各バッチの最初の数サンプルのみ）
+                    try:
+                        for j in range(min(3, src.size(0))):  # バッチごとに最初の3サンプルだけ計算
+                            if hasattr(model, 'predict'):
+                                # 実際の翻訳を生成
+                                pred_ids = model.predict(src[j:j+1], max_length=100, device=device)[0]
+                                pred_text = convert_ids_to_text(pred_ids, id2word, skip_special=True)
+
+                                # 参照訳（ターゲット）
+                                ref_text = convert_ids_to_text(tgt[j], id2word, skip_special=True)
+
+                                # トークン化
+                                pred_tokens = pred_text.split()
+                                ref_tokens = ref_text.split()
+
+                                # BLEUスコアを計算
+                                if pred_tokens and ref_tokens:
+                                    score = calculate_bleu([[ref_tokens]], [pred_tokens])
+                                    batch_bleu.append(score)
+                    except Exception as e:
+                        logging.error(f"BLEUスコア計算エラー: {e}")
+
+                except RuntimeError as e:
+                    logging.warning(f"検証中にランタイムエラーが発生しました: {e}")
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    continue
+
+            except Exception as e:
+                logging.error(f"検証バッチの処理中にエラーが発生しました: {e}")
+                continue
+
+    # 平均損失とBLEUスコアを計算
+    avg_loss = total_loss / max(1, valid_batch_count)
+    avg_bleu = sum(batch_bleu) / max(1, len(batch_bleu))
+
+    return avg_loss, avg_bleu, sample_translations
 
 class TranslationModel(nn.Module):
     def __init__(self, encoder, decoder, src_pad_idx, tgt_pad_idx, device):
@@ -487,3 +557,51 @@ class TranslationModel(nn.Module):
         # キャッシュ付きのデコーダー
         decoder_output, new_cache = self.decoder(tgt_input, encoder_output, tgt_mask, memory_mask, cache=cache)
         return decoder_output, new_cache
+
+    def predict(self, src, max_length=100, device=None):
+        """
+        ソーステキストから翻訳を生成します。
+
+        Args:
+            src (torch.Tensor): ソーステキストのテンソル [batch_size, src_len]
+            max_length (int): 生成する最大トークン数
+            device: 使用するデバイス（Noneの場合はself.deviceを使用）
+
+        Returns:
+            list: 生成された翻訳トークンIDのリスト
+        """
+        if device is None:
+            device = self.device
+
+        batch_size = src.size(0)
+
+        # 初期トークンとして<s>を使用
+        tgt_tokens = torch.ones(batch_size, 1).fill_(2).long().to(device)  # <s>トークンで初期化
+
+        # エンコーダー出力のキャッシュを保持
+        src_mask = create_padding_mask(src, self.src_pad_idx).to(device)
+        encoder_output = self.encoder(src, src_mask)
+        cache = None
+
+        with torch.no_grad():
+            for i in range(max_length):
+                tgt_mask = create_subsequent_mask(tgt_tokens).to(device)
+                memory_mask = src_mask.expand(-1, -1, tgt_tokens.size(1), -1)
+
+                # デコーダーの順伝播
+                decoder_output, cache = self.decoder(
+                    tgt_tokens, encoder_output, tgt_mask, memory_mask, cache=cache
+                )
+
+                # 次のトークンを予測
+                pred = decoder_output[:, -1, :]
+                next_token = pred.argmax(dim=1, keepdim=True)
+
+                # 予測トークンを追加
+                tgt_tokens = torch.cat([tgt_tokens, next_token], dim=1)
+
+                # EOSトークンが生成されたら終了
+                if (next_token == 3).all():  # </s>トークン
+                    break
+
+        return tgt_tokens
