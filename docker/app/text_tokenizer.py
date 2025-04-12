@@ -1,7 +1,7 @@
 import os
 import torch
 from data import set_data, normalize_text, train_sentencepiece
-from config import TRANSLATION_SOURCE, TRANSLATION_DESTINATION, TRANSLATION_SOURCE2, TRANSLATION_DESTINATION2, TOKENIZE_BATCH_SIZE, DATA_AUGMENTATION_FACTOR, DATA_AUGMENTATION_TECHNIQUES
+from config import CONFIG # Import CONFIG dictionary
 from tqdm import tqdm
 import sentencepiece as spm
 import multiprocessing
@@ -107,7 +107,7 @@ def process_batch_data(data_src, data_tgt, base_vocab, dest_vocab, batch_size, d
             continue
     return token_ids
 
-def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_train, path_val, batch_size=TOKENIZE_BATCH_SIZE, enable_augmentation=False, augmentation_factor=DATA_AUGMENTATION_FACTOR):
+def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_train, path_val, batch_size=CONFIG["TOKENIZE_BATCH_SIZE"], enable_augmentation=False, augmentation_factor=CONFIG["DATA_AUGMENTATION_FACTOR"]):
     """
     データをトークン化し、オプションでデータ拡張も行います。
 
@@ -292,7 +292,7 @@ def process_and_save_data(train_dataset, val_dataset, lang_src, lang_tgt, path_t
                 sp_src,
                 sp_tgt,
                 augmentation_factor=augmentation_factor,
-                techniques=DATA_AUGMENTATION_TECHNIQUES
+                techniques=CONFIG["DATA_AUGMENTATION_TECHNIQUES"]
             )
             logging.info(f"データ拡張が完了しました: 元のデータ {len(train_token_ids)} → 拡張後 {len(augmented_train_token_ids)} サンプル")
             train_token_ids = augmented_train_token_ids
@@ -310,7 +310,7 @@ def main():
     parser = argparse.ArgumentParser(description='テキストデータのトークン化と前処理を行います')
     parser.add_argument('--sample-size', type=int, default=1000, help='使用するサンプル数（0で全データ使用）')
     parser.add_argument('--augment', action='store_true', help='データ拡張を有効にする')
-    parser.add_argument('--augment-factor', type=float, default=DATA_AUGMENTATION_FACTOR, help='データ拡張の倍率')
+    parser.add_argument('--augment-factor', type=float, default=CONFIG["DATA_AUGMENTATION_FACTOR"], help='データ拡張の倍率')
     args = parser.parse_args()
 
     try:
@@ -330,7 +330,7 @@ def main():
             print(f"すべてのデータ({len(filtered_train_data)}件)を使用します。")
 
         # データセットを設定
-        train_dataset = set_data(filtered_train_data[TRANSLATION_SOURCE2], filtered_train_data[TRANSLATION_DESTINATION2])
+        train_dataset = set_data(filtered_train_data[CONFIG["TRANSLATION_SOURCE2"]], filtered_train_data[CONFIG["TRANSLATION_DESTINATION2"]])
 
         # train_dataを学習用データとテストデータに分割
         train_dataset, val_dataset = train_test_split(train_dataset, test_size=0.1, random_state=42)
@@ -343,12 +343,13 @@ def main():
         train_token_ids, val_token_ids = process_and_save_data(
             train_dataset,
             val_dataset,
-            TRANSLATION_SOURCE,
-            TRANSLATION_DESTINATION,
+            CONFIG["TRANSLATION_SOURCE"], # Use CONFIG dictionary
+            CONFIG["TRANSLATION_DESTINATION"], # Use CONFIG dictionary
             train_data_path,
             val_data_path,
+            batch_size=CONFIG["TOKENIZE_BATCH_SIZE"],
             enable_augmentation=args.augment,
-            augmentation_factor=args.augment_factor
+            augmentation_factor=args.augment_factor if args.augment else CONFIG["DATA_AUGMENTATION_FACTOR"]
         )
         print("処理が完了しました")
         print(f"トレーニングデータ: {len(train_token_ids)} サンプル")

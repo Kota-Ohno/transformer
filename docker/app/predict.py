@@ -8,11 +8,7 @@ import gc  # ガベージコレクション用
 from encoder import Encoder
 from decoder import Decoder
 from utils import TranslationModel, create_padding_mask, create_subsequent_mask
-from config import (
-    DEVICE, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE,
-    TRANSLATION_SOURCE, TRANSLATION_DESTINATION, INPUT_VOCAB_PATH,
-    OUTPUT_VOCAB_PATH, MAX_SEQ_LENGTH, REL_POS_MAX_DISTANCE
-)
+from config import CONFIG, MODEL_CONFIG, DEVICE, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from data import tokenize, tokens_to_ids, ids_to_tokens
 
 # 拡張モデルをインポート
@@ -52,51 +48,41 @@ def load_model(input_vocab, output_vocab, enhanced=False, model_path=None):
 
     # 保存されたモデル設定を読み込む
     saved_config = None
+    # Use MODEL_CONFIG for defaults
+    hidden_size = MODEL_CONFIG.hidden_size
+    num_heads = MODEL_CONFIG.num_heads
+    num_layers = MODEL_CONFIG.num_layers
+    d_ff = MODEL_CONFIG.d_ff
+    dropout_rate = MODEL_CONFIG.dropout
+    rel_pos_max_distance = MODEL_CONFIG.rel_pos_max_distance
+
     if isinstance(checkpoint, dict):
         if 'model_config' in checkpoint:
             saved_config = checkpoint['model_config']
             logging.info(f"保存された設定を使用します: {saved_config}")
 
-            # 必要な設定値を取得
-            hidden_size = saved_config.get('HIDDEN_SIZE', HIDDEN_SIZE)
-            num_heads = saved_config.get('NUM_HEADS', NUM_HEADS)
-            num_layers = saved_config.get('NUM_LAYERS', NUM_LAYERS)
-            d_ff = saved_config.get('D_FF', D_FF)
-            dropout_rate = saved_config.get('DROPOUT_RATE', DROPOUT_RATE)
-            rel_pos_max_distance = saved_config.get('REL_POS_MAX_DISTANCE', REL_POS_MAX_DISTANCE)
-        else:
-            # 設定情報がない場合は現在の設定を使用
-            hidden_size = HIDDEN_SIZE
-            num_heads = NUM_HEADS
-            num_layers = NUM_LAYERS
-            d_ff = D_FF
-            dropout_rate = DROPOUT_RATE
-            rel_pos_max_distance = REL_POS_MAX_DISTANCE
+            # 必要な設定値を取得 (チェックポイントの設定を優先)
+            hidden_size = saved_config.get('HIDDEN_SIZE', hidden_size)
+            num_heads = saved_config.get('NUM_HEADS', num_heads)
+            num_layers = saved_config.get('NUM_LAYERS', num_layers)
+            d_ff = saved_config.get('D_FF', d_ff)
+            dropout_rate = saved_config.get('DROPOUT_RATE', dropout_rate)
+            rel_pos_max_distance = saved_config.get('REL_POS_MAX_DISTANCE', rel_pos_max_distance)
+        elif 'model_state_dict' in checkpoint:
+            # 古い形式の場合、レイヤー数を推定
+            encoder_layers = 0
+            decoder_layers = 0
+            for key in checkpoint['model_state_dict'].keys():
+                if '.encoder.layers.' in key:
+                    layer_num = int(key.split('.encoder.layers.')[1].split('.')[0])
+                    encoder_layers = max(encoder_layers, layer_num + 1)
+                if '.decoder.layers.' in key:
+                    layer_num = int(key.split('.decoder.layers.')[1].split('.')[0])
+                    decoder_layers = max(decoder_layers, layer_num + 1)
 
-            # これが古いモデルで、NUM_LAYERSの不一致による可能性があるかチェック
-            if 'model_state_dict' in checkpoint:
-                # モデルの状態辞書からレイヤー数を推定
-                encoder_layers = 0
-                decoder_layers = 0
-                for key in checkpoint['model_state_dict'].keys():
-                    if '.encoder.layers.' in key:
-                        layer_num = int(key.split('.encoder.layers.')[1].split('.')[0])
-                        encoder_layers = max(encoder_layers, layer_num + 1)
-                    if '.decoder.layers.' in key:
-                        layer_num = int(key.split('.decoder.layers.')[1].split('.')[0])
-                        decoder_layers = max(decoder_layers, layer_num + 1)
-
-                if encoder_layers > 0:
-                    logging.info(f"モデル状態辞書から推定したレイヤー数: {encoder_layers}")
-                    num_layers = encoder_layers
-    else:
-        # 従来の形式の場合は現在の設定を使用
-        hidden_size = HIDDEN_SIZE
-        num_heads = NUM_HEADS
-        num_layers = NUM_LAYERS
-        d_ff = D_FF
-        dropout_rate = DROPOUT_RATE
-        rel_pos_max_distance = REL_POS_MAX_DISTANCE
+            if encoder_layers > 0:
+                logging.info(f"モデル状態辞書から推定したレイヤー数: {encoder_layers}")
+                num_layers = encoder_layers
 
     if enhanced:
         # 拡張モデルを作成
@@ -142,7 +128,7 @@ def load_vocab(vocab_path):
 
 def preprocess_input(sentence, input_vocab):
     try:
-        tokens = tokenize(sentence, TRANSLATION_SOURCE)
+        tokens = tokenize(sentence, CONFIG["TRANSLATION_SOURCE"])
         token_ids = tokens_to_ids(tokens, input_vocab)
         return torch.tensor([token_ids], dtype=torch.long)
     except KeyError as e:
@@ -156,7 +142,7 @@ def preprocess_input(sentence, input_vocab):
 def handle_unknown_tokens(sentence, input_vocab):
     """未知トークンを<unk>に置き換えて処理する"""
     try:
-        tokens = tokenize(sentence, TRANSLATION_SOURCE)
+        tokens = tokenize(sentence, CONFIG["TRANSLATION_SOURCE"])
         token_ids = []
         for token in tokens:
             if token in input_vocab:
@@ -169,7 +155,7 @@ def handle_unknown_tokens(sentence, input_vocab):
         logging.error(f"未知トークン処理中にエラーが発生しました: {e}")
         return None
 
-def predict(model, input_tensor, input_vocab, output_vocab, max_len=MAX_SEQ_LENGTH, beam_size=5, alpha=0.7):
+def predict(model, input_tensor, input_vocab, output_vocab, max_len=CONFIG["MAX_SEQ_LENGTH"], beam_size=5, alpha=0.7):
     """
     ビームサーチを使用して翻訳を生成する関数。
 
@@ -325,7 +311,7 @@ def main():
         logging.error(f"エラー: {e}")
         sys.exit(1)
 
-    spacer = " " if TRANSLATION_DESTINATION == 'en_US' else ""
+    spacer = " " if CONFIG["TRANSLATION_DESTINATION"] == 'en_US' else ""
 
     logging.info("モデルをロードしました。入力を待っています...")
     logging.info("exitと入力すると終了します...")
@@ -338,7 +324,7 @@ def main():
         if input_tensor is None:
             continue
 
-        output_ids = predict(model, input_tensor, input_vocab, output_vocab, MAX_SEQ_LENGTH, beam_size=5, alpha=0.7)
+        output_ids = predict(model, input_tensor, input_vocab, output_vocab, CONFIG["MAX_SEQ_LENGTH"], beam_size=5, alpha=0.7)
         if output_ids is None:
             continue
 

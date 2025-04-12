@@ -7,14 +7,7 @@ import argparse
 import subprocess
 from datetime import datetime
 from data import create_data_loader
-from config import (
-    WARMUP_STEPS, PATIENCE, BATCH_SIZE, MIN_BATCH_SIZE, MAX_BATCH_SIZE,
-    ACCUMULATED_BATCHES, LEARNING_RATE, INPUT_VOCAB_PATH, GRAD_CLIP_NORM,
-    OUTPUT_VOCAB_PATH, HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF,
-    DROPOUT_RATE, DEVICE, NUM_EPOCHS, MAX_SEQ_LENGTH, LAYER_DROPOUT, WEIGHT_DECAY,
-    DATA_AUGMENTATION_FACTOR, DATA_AUGMENTATION_TECHNIQUES, MAX_RETRY_COUNT,
-    USE_ENHANCED_MODEL, REL_POS_MAX_DISTANCE, USE_GLU
-)
+from config import CONFIG, MODEL_CONFIG, DEVICE, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from utils import validate, TranslationModel, WarmupScheduler, download_nltk_resources
 from text_tokenizer import load_tokenized_data
 import logging
@@ -41,7 +34,7 @@ BLEU_IMPROVEMENT_THRESHOLD = 0.01
 # 損失改善の最小閾値
 LOSS_IMPROVEMENT_THRESHOLD = 0.02
 
-def load_data(train_data_path: str, val_data_path: str, retry_count: int = MAX_RETRY_COUNT) -> Tuple[List[List[int]], List[List[int]]]:
+def load_data(train_data_path: str, val_data_path: str, retry_count: int = CONFIG["MAX_RETRY_COUNT"]) -> Tuple[List[List[int]], List[List[int]]]:
     """
     トークナイズ済みデータを読み込む関数（リトライ機能付き）
 
@@ -83,7 +76,7 @@ def load_data(train_data_path: str, val_data_path: str, retry_count: int = MAX_R
 def determine_batch_size():
     """GPUメモリに基づいて適切なバッチサイズを決定する"""
     if not torch.cuda.is_available():
-        return BATCH_SIZE
+        return CONFIG["BATCH_SIZE"]
 
     # GPUメモリ情報を取得
     try:
@@ -91,17 +84,17 @@ def determine_batch_size():
         total_memory = gpu_props.total_memory / 1024**2  # MB単位
 
         # モデルサイズを推定（HIDDEN_SIZEに基づく単純な見積もり）
-        est_model_size = HIDDEN_SIZE * HIDDEN_SIZE * NUM_LAYERS * 2 * 4 / 1024**2  # MB単位
+        est_model_size = MODEL_CONFIG.hidden_size * MODEL_CONFIG.hidden_size * MODEL_CONFIG.num_layers * 2 * 4 / 1024**2  # MB単位
 
         # 利用可能なバッチサイズを推定
         available_memory = total_memory * 0.8  # 80%をモデル用に
         estimated_batch_size = int(available_memory / est_model_size)
 
         # 範囲内に収める
-        return max(MIN_BATCH_SIZE, min(MAX_BATCH_SIZE, estimated_batch_size))
+        return max(CONFIG["MIN_BATCH_SIZE"], min(CONFIG["MAX_BATCH_SIZE"], estimated_batch_size))
     except Exception as e:
         logging.warning(f"バッチサイズの自動決定に失敗しました: {e}")
-        return BATCH_SIZE
+        return CONFIG["BATCH_SIZE"]
 
 def truncate_long_sequences(X_batch, y_batch, max_seq_length):
     """
@@ -147,10 +140,9 @@ def determine_model_size():
     except Exception as e:
         logging.warning(f"モデルサイズの自動調整に失敗しました: {e}")
         # エラー時はデフォルト値を使用
-        from config import HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS
-        return HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS
+        return MODEL_CONFIG.hidden_size, MODEL_CONFIG.num_heads, MODEL_CONFIG.num_layers
 
-def apply_data_augmentation(train_token_ids, sp_src, sp_tgt, augmentation_factor=DATA_AUGMENTATION_FACTOR):
+def apply_data_augmentation(train_token_ids, sp_src, sp_tgt, augmentation_factor=CONFIG["DATA_AUGMENTATION_FACTOR"]):
     """
     トレーニングデータに対してデータ拡張を適用します
 
@@ -170,7 +162,7 @@ def apply_data_augmentation(train_token_ids, sp_src, sp_tgt, augmentation_factor
             sp_src,
             sp_tgt,
             augmentation_factor=augmentation_factor,
-            techniques=DATA_AUGMENTATION_TECHNIQUES
+            techniques=CONFIG["DATA_AUGMENTATION_TECHNIQUES"]
         )
         logging.info(f"データ拡張が完了しました: {len(train_token_ids)} サンプル → {len(augmented_data)} サンプル")
         return augmented_data
@@ -212,11 +204,11 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
     if hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
         num_layers = len(model.encoder.layers)
     else:
-        num_layers = NUM_LAYERS
+        num_layers = MODEL_CONFIG.num_layers
 
     # 引数で渡された値があれば優先して使用
-    hidden_size = model_hidden_size or HIDDEN_SIZE
-    num_heads = model_num_heads or NUM_HEADS
+    hidden_size = model_hidden_size or MODEL_CONFIG.hidden_size
+    num_heads = model_num_heads or MODEL_CONFIG.num_heads
     num_layers = model_num_layers or num_layers
 
     # モデル設定を辞書に保存
@@ -224,10 +216,10 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         'HIDDEN_SIZE': hidden_size,
         'NUM_HEADS': num_heads,
         'NUM_LAYERS': num_layers,
-        'D_FF': D_FF,
-        'DROPOUT_RATE': DROPOUT_RATE,
-        'MAX_SEQ_LENGTH': MAX_SEQ_LENGTH,
-        'REL_POS_MAX_DISTANCE': REL_POS_MAX_DISTANCE
+        'D_FF': MODEL_CONFIG.d_ff,
+        'DROPOUT_RATE': MODEL_CONFIG.dropout,
+        'MAX_SEQ_LENGTH': MODEL_CONFIG.max_seq_length,
+        'REL_POS_MAX_DISTANCE': MODEL_CONFIG.rel_pos_max_distance
     }
 
     # チェックポイント情報を準備
@@ -253,7 +245,7 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         torch.save(checkpoint, best_model_path)
         logging.info(f"最良モデルを保存しました: {best_model_path}")
 
-def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, update_globals=True):
+def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, update_globals=False):
     """
     チェックポイントからモデルを読み込みます
 
@@ -262,7 +254,7 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, upda
         model: モデル
         optimizer: オプティマイザ（オプション）
         scheduler: スケジューラ（オプション）
-        update_globals: グローバル変数を更新するかどうか（デフォルトはTrue）
+        update_globals: グローバル変数を更新するかどうか（デフォルトはFalse、configから読むため）
 
     Returns:
         モデル、エポック、検証損失、BLEUスコア、モデル設定（辞書）
@@ -285,30 +277,6 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, upda
 
         # モデル設定情報を取得
         model_config = checkpoint.get('model_config', {})
-
-        # グローバル変数の更新（オプション）
-        if update_globals and model_config:
-            global HIDDEN_SIZE, NUM_HEADS, NUM_LAYERS, D_FF, DROPOUT_RATE
-
-            if 'HIDDEN_SIZE' in model_config:
-                HIDDEN_SIZE = model_config['HIDDEN_SIZE']
-                logging.info(f"HIDDEN_SIZEを{HIDDEN_SIZE}に更新しました")
-
-            if 'NUM_HEADS' in model_config:
-                NUM_HEADS = model_config['NUM_HEADS']
-                logging.info(f"NUM_HEADSを{NUM_HEADS}に更新しました")
-
-            if 'NUM_LAYERS' in model_config:
-                NUM_LAYERS = model_config['NUM_LAYERS']
-                logging.info(f"NUM_LAYERSを{NUM_LAYERS}に更新しました")
-
-            if 'D_FF' in model_config:
-                D_FF = model_config['D_FF']
-                logging.info(f"D_FFを{D_FF}に更新しました")
-
-            if 'DROPOUT_RATE' in model_config:
-                DROPOUT_RATE = model_config['DROPOUT_RATE']
-                logging.info(f"DROPOUT_RATEを{DROPOUT_RATE}に更新しました")
 
         logging.info(f"チェックポイントを読み込みました (エポック {epoch}, 検証損失 {val_loss:.4f}, BLEU {bleu_score:.4f})")
         return model, epoch, val_loss, bleu_score, model_config
@@ -356,15 +324,15 @@ def main():
     parser.add_argument('--resume', action='store_true', help='最新のチェックポイントから再開する')
     parser.add_argument('--checkpoint', type=str, help='特定のチェックポイントから再開する')
     parser.add_argument('--augment', action='store_true', help='データ拡張を有効にする')
-    parser.add_argument('--augment-factor', type=float, default=DATA_AUGMENTATION_FACTOR,
+    parser.add_argument('--augment-factor', type=float, default=CONFIG["DATA_AUGMENTATION_FACTOR"],
                         help='データ拡張の割合')
-    parser.add_argument('--epochs', type=int, default=NUM_EPOCHS, help='トレーニングのエポック数')
-    parser.add_argument('--batch-size', type=int, default=BATCH_SIZE, help='バッチサイズ')
+    parser.add_argument('--epochs', type=int, default=CONFIG["NUM_EPOCHS"], help='トレーニングのエポック数')
+    parser.add_argument('--batch-size', type=int, default=CONFIG["BATCH_SIZE"], help='バッチサイズ')
     parser.add_argument('--no-wandb', action='store_true', help='Weights & Biasesのログを無効にする')
     parser.add_argument('--enhanced', action='store_true', help='相対位置エンコーディングとGLUを使用した強化版モデルを使用する')
-    parser.add_argument('--rel-pos-max-dist', type=int, default=REL_POS_MAX_DISTANCE,
+    parser.add_argument('--rel-pos-max-dist', type=int, default=CONFIG["REL_POS_MAX_DISTANCE"],
                        help='相対位置エンコーディングの最大距離')
-    parser.add_argument('--warmup-steps', type=int, default=WARMUP_STEPS,
+    parser.add_argument('--warmup-steps', type=int, default=CONFIG["WARMUP_STEPS"],
                        help='ウォームアップステップ数')
     args = parser.parse_args()
 
@@ -374,7 +342,7 @@ def main():
         logging.info("Dockerコンテナ内での実行を検出しました")
 
     # 強化版モデルの使用フラグ（コマンドラインまたは設定ファイル）
-    use_enhanced_model = args.enhanced or USE_ENHANCED_MODEL
+    use_enhanced_model = args.enhanced or CONFIG["USE_ENHANCED_MODEL"]
 
     try:
         # NLTK リソースのダウンロード
@@ -422,7 +390,7 @@ def main():
 
         # 使用するモデルタイプのログ
         if use_enhanced_model:
-            logging.info(f"強化版モデルを使用します（相対位置エンコーディング、最大距離: {args.rel_pos_max_dist}、GLU使用: {USE_GLU}）")
+            logging.info(f"強化版モデルを使用します（相対位置エンコーディング、最大距離: {args.rel_pos_max_dist}、GLU使用: {CONFIG['USE_GLU']}）")
         else:
             logging.info("標準のTransformerモデルを使用します")
 
@@ -436,10 +404,10 @@ def main():
                 hidden_dim=model_hidden_size,
                 num_heads=model_num_heads,
                 num_layers=model_num_layers,
-                ff_dim=D_FF,
+                ff_dim=MODEL_CONFIG.d_ff, # Use MODEL_CONFIG
                 src_pad_idx=src_pad_idx,
                 tgt_pad_idx=tgt_pad_idx,
-                dropout=DROPOUT_RATE,
+                dropout=MODEL_CONFIG.dropout, # Use MODEL_CONFIG
                 device=DEVICE,
                 max_dist=args.rel_pos_max_dist
             )
@@ -448,12 +416,12 @@ def main():
             from encoder import Encoder
             from decoder import Decoder
 
-            encoder = Encoder(input_dim, model_hidden_size, model_num_heads, model_num_layers, D_FF, DROPOUT_RATE, DEVICE).to(DEVICE)
-            decoder = Decoder(output_dim, model_hidden_size, model_num_heads, model_num_layers, D_FF, output_dim, DROPOUT_RATE, DEVICE).to(DEVICE)
+            encoder = Encoder(input_dim, model_hidden_size, model_num_heads, model_num_layers, MODEL_CONFIG.d_ff, MODEL_CONFIG.dropout, DEVICE).to(DEVICE)
+            decoder = Decoder(output_dim, model_hidden_size, model_num_heads, model_num_layers, MODEL_CONFIG.d_ff, output_dim, MODEL_CONFIG.dropout, DEVICE).to(DEVICE)
             model = TranslationModel(encoder, decoder, src_pad_idx, tgt_pad_idx, DEVICE).to(DEVICE)
 
         # GPUメモリに基づいてバッチサイズを決定
-        batch_size = determine_batch_size() if args.batch_size == BATCH_SIZE else args.batch_size
+        batch_size = determine_batch_size() if args.batch_size == CONFIG["BATCH_SIZE"] else args.batch_size
         logging.info(f"使用するバッチサイズ: {batch_size}")
 
         # デバイスにモデルを配置
@@ -471,9 +439,9 @@ def main():
                     "num_heads": model_num_heads,
                     "num_layers": model_num_layers,
                     "batch_size": batch_size,
-                    "learning_rate": LEARNING_RATE,
+                    "learning_rate": CONFIG["LEARNING_RATE"],
                     "epochs": args.epochs,
-                    "dropout": DROPOUT_RATE,
+                    "dropout": MODEL_CONFIG.dropout,
                     "warmup_steps": args.warmup_steps,
                     "data_augmentation": args.augment,
                     "augment_factor": args.augment_factor if args.augment else 0,
@@ -487,8 +455,8 @@ def main():
         # オプティマイザとスケジューラを定義
         optimizer = optim.AdamW(
             model.parameters(),
-            lr=LEARNING_RATE,
-            weight_decay=WEIGHT_DECAY  # 重み減衰を追加して過学習を抑制
+            lr=CONFIG["LEARNING_RATE"],
+            weight_decay=CONFIG["WEIGHT_DECAY"]  # 重み減衰を追加して過学習を抑制
         )
 
         # 改良されたスケジューラを使用（線形減衰を選択）
@@ -498,7 +466,7 @@ def main():
             args.warmup_steps,
             args.epochs * (len(train_token_ids) // args.batch_size + 1),
             min_lr=1e-6,
-            initial_lr=LEARNING_RATE,
+            initial_lr=CONFIG["LEARNING_RATE"],
             decay_method='linear'  # 線形減衰を使用
         )
 
@@ -510,9 +478,13 @@ def main():
         if args.resume or args.checkpoint:
             checkpoint_path = args.checkpoint if args.checkpoint else find_latest_checkpoint()
             if checkpoint_path:
-                model, start_epoch, best_val_loss, best_bleu_score, model_config = load_checkpoint(
+                model, start_epoch, best_val_loss, best_bleu_score, loaded_model_config = load_checkpoint(
                     checkpoint_path, model, optimizer, scheduler
                 )
+                # 必要であればロードした設定でモデルサイズを更新
+                model_hidden_size = loaded_model_config.get('HIDDEN_SIZE', model_hidden_size)
+                model_num_heads = loaded_model_config.get('NUM_HEADS', model_num_heads)
+                model_num_layers = loaded_model_config.get('NUM_LAYERS', model_num_layers)
                 start_epoch += 1  # 次のエポックから開始
             else:
                 logging.warning("チェックポイントが見つかりませんでした。トレーニングを最初から開始します。")
@@ -545,7 +517,7 @@ def main():
                     y_batch = y_batch.to(DEVICE)
 
                     # 長すぎるシーケンスを切り詰め
-                    X_batch, y_batch = truncate_long_sequences(X_batch, y_batch, MAX_SEQ_LENGTH)
+                    X_batch, y_batch = truncate_long_sequences(X_batch, y_batch, CONFIG["MAX_SEQ_LENGTH"])
 
                     # デコーダーへの入力を作成 (Teacher Forcing)
                     # まずターゲット出力サイズを決定
@@ -581,7 +553,7 @@ def main():
                             )
 
                             # バッチサイズで正規化して勾配累積を行う
-                            loss = loss / ACCUMULATED_BATCHES
+                            loss = loss / CONFIG["ACCUMULATED_BATCHES"]
 
                         # スケーラーで逆伝播
                         scaler.scale(loss).backward()
@@ -592,23 +564,23 @@ def main():
                             decoder_output.view(-1, output_dim),
                             target_output.reshape(-1)
                         )
-                        loss = loss / ACCUMULATED_BATCHES
+                        loss = loss / CONFIG["ACCUMULATED_BATCHES"]
                         loss.backward()
 
                     # バッチ毎の損失を記録
-                    batch_loss = loss.item() * ACCUMULATED_BATCHES
+                    batch_loss = loss.item() * CONFIG["ACCUMULATED_BATCHES"]
                     total_epoch_loss += batch_loss
 
                     # 勾配累積カウンターを更新
                     accumulation_count += 1
 
                     # 指定のバッチ数たまったら勾配を適用
-                    if accumulation_count == ACCUMULATED_BATCHES or i == len(train_loader) - 1:
+                    if accumulation_count == CONFIG["ACCUMULATED_BATCHES"] or i == len(train_loader) - 1:
                         # 勾配クリッピング
                         if scaler:
                             scaler.unscale_(optimizer)
 
-                        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=GRAD_CLIP_NORM)
+                        grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=CONFIG["GRAD_CLIP_NORM"])
 
                         # 最適化ステップ
                         if scaler:
@@ -693,7 +665,7 @@ def main():
                 patience_counter = 0
             else:
                 patience_counter += 1
-                if patience_counter >= PATIENCE:
+                if patience_counter >= CONFIG["PATIENCE"]:
                     logging.info("Early stopping triggered")
                     break
 

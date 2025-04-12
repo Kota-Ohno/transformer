@@ -1,11 +1,15 @@
 import torch
 import torch.nn as nn
 import math
-from config import MAX_SEQ_LENGTH
+from config import CONFIG
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_seq_length=MAX_SEQ_LENGTH):
+    def __init__(self, d_model, max_seq_length=None):
         super(PositionalEncoding, self).__init__()
+        # デフォルト値を設定
+        if max_seq_length is None:
+            max_seq_length = CONFIG["MAX_SEQ_LENGTH"]
+
         # 位置エンコーディングを事前計算
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length).unsqueeze(1).float()

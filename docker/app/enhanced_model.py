@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
-from typing import List, Dict, Tuple
+import logging
+from typing import List, Dict, Tuple, Optional
 from utils import create_padding_mask, create_subsequent_mask
 from advanced_encoder import EnhancedEncoder
 from advanced_decoder import EnhancedDecoder
-from config import MAX_SEQ_LENGTH, DEVICE
+from config import CONFIG, DEVICE
 
 class EnhancedTranslationModel(nn.Module):
     """
@@ -29,7 +30,7 @@ class EnhancedTranslationModel(nn.Module):
     """
     def __init__(self, encoder: EnhancedEncoder, decoder: EnhancedDecoder,
                  src_pad_idx: int, tgt_pad_idx: int, device: str,
-                 max_seq_length: int = MAX_SEQ_LENGTH):
+                 max_seq_length: Optional[int] = None):
         super(EnhancedTranslationModel, self).__init__()
 
         self.encoder = encoder
@@ -37,10 +38,41 @@ class EnhancedTranslationModel(nn.Module):
         self.src_pad_idx = src_pad_idx
         self.tgt_pad_idx = tgt_pad_idx
         self.device = device
-        self.max_seq_length = max_seq_length
+        self.max_seq_length = max_seq_length if max_seq_length is not None else CONFIG["MAX_SEQ_LENGTH"]
+
+        logging.info(f"EnhancedTranslationModel initialized: max_seq_length={self.max_seq_length}")
+
+    def _ensure_valid_tensors(self, src: torch.Tensor, tgt_input: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        入力テンソルが有効であることを確認し、必要に応じて調整する
+
+        Args:
+            src (torch.Tensor): ソーステンソル
+            tgt_input (torch.Tensor): ターゲット入力テンソル
+
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor]: 調整されたテンソル
+        """
+        # シーケンス長の制限
+        if src.size(1) > self.max_seq_length:
+            logging.warning(f"ソースシーケンス長を制限: {src.size(1)} → {self.max_seq_length}")
+            src = src[:, :self.max_seq_length]
+
+        if tgt_input.size(1) > self.max_seq_length:
+            logging.warning(f"ターゲットシーケンス長を制限: {tgt_input.size(1)} → {self.max_seq_length}")
+            tgt_input = tgt_input[:, :self.max_seq_length]
+
+        # バッチサイズの一致確認
+        if src.size(0) != tgt_input.size(0):
+            logging.warning(f"バッチサイズ不一致: src={src.size(0)}, tgt={tgt_input.size(0)}")
+            min_batch = min(src.size(0), tgt_input.size(0))
+            src = src[:min_batch]
+            tgt_input = tgt_input[:min_batch]
+
+        return src, tgt_input
 
     def forward(self, src: torch.Tensor, tgt_input: torch.Tensor,
-                cache: List[Dict[str, torch.Tensor]] = None) -> Tuple[torch.Tensor, List[Dict[str, torch.Tensor]]]:
+                cache: Optional[List[Dict[str, torch.Tensor]]] = None) -> Tuple[torch.Tensor, List[Dict[str, torch.Tensor]]]:
         """
         順伝播処理
 
@@ -52,25 +84,50 @@ class EnhancedTranslationModel(nn.Module):
         Returns:
             Tuple[torch.Tensor, List[Dict[str, torch.Tensor]]]: デコーダー出力とキャッシュ
         """
-        # マスクの作成
-        src_mask = create_padding_mask(src, self.src_pad_idx).to(self.device)
-        tgt_mask = create_subsequent_mask(tgt_input)
-        tgt_pad_mask = create_padding_mask(tgt_input, self.tgt_pad_idx).to(self.device)
+        try:
+            # 入力テンソルの調整
+            src, tgt_input = self._ensure_valid_tensors(src, tgt_input)
 
-        # ターゲットマスクは、パディングマスクと後続マスクの論理積
-        tgt_mask = torch.logical_and(tgt_pad_mask.expand(-1, -1, tgt_input.size(1), -1), tgt_mask)
+            # マスクの作成
+            src_mask = create_padding_mask(src, self.src_pad_idx).to(self.device)
+            tgt_mask = create_subsequent_mask(tgt_input).to(self.device)
+            tgt_pad_mask = create_padding_mask(tgt_input, self.tgt_pad_idx).to(self.device)
 
-        # エンコーダ出力に適用するマスク
-        memory_mask = src_mask.expand(-1, -1, tgt_input.size(1), -1)
+            # ターゲットマスクは、パディングマスクと後続マスクの論理積
+            combined_tgt_mask = torch.logical_and(
+                tgt_pad_mask.expand(-1, -1, tgt_input.size(1), -1),
+                tgt_mask
+            )
 
-        # エンコーダ順伝播
-        encoder_output = self.encoder(src, src_mask)
+            # エンコーダ出力に適用するマスク
+            memory_mask = src_mask.expand(-1, -1, tgt_input.size(1), -1)
 
-        # デコーダ順伝播
-        decoder_output, new_cache = self.decoder(tgt_input, encoder_output,
-                                               tgt_mask, memory_mask, cache=cache)
+            # エンコーダ順伝播
+            encoder_output = self.encoder(src, src_mask)
 
-        return decoder_output, new_cache
+            # デコーダ順伝播
+            decoder_output, new_cache = self.decoder(
+                tgt_input,
+                encoder_output,
+                combined_tgt_mask,
+                memory_mask,
+                cache=cache
+            )
+
+            return decoder_output, new_cache
+
+        except Exception as e:
+            logging.error(f"Forward処理中にエラー発生: {e}")
+            # エラー発生時のフォールバック
+            batch_size = src.size(0)
+            tgt_len = tgt_input.size(1)
+            hidden_dim = self.decoder.output_layer.out_features
+
+            # 0埋めの出力を返す
+            empty_output = torch.zeros(batch_size, tgt_len, hidden_dim, device=self.device)
+            empty_cache = cache if cache is not None else [{} for _ in range(len(self.decoder.layers))]
+
+            return empty_output, empty_cache
 
 
 def create_enhanced_model(input_dim: int, output_dim: int, hidden_dim: int,
@@ -96,37 +153,45 @@ def create_enhanced_model(input_dim: int, output_dim: int, hidden_dim: int,
     Returns:
         EnhancedTranslationModel: 強化版翻訳モデル
     """
-    # エンコーダーとデコーダーの作成
-    encoder = EnhancedEncoder(
-        input_dim=input_dim,
-        hidden_dim=hidden_dim,
-        num_heads=num_heads,
-        num_layers=num_layers,
-        ff_dim=ff_dim,
-        dropout=dropout,
-        device=device,
-        max_dist=max_dist
-    )
+    # ロギング設定
+    logging.info(f"強化版モデルを作成します: hidden_dim={hidden_dim}, num_heads={num_heads}, num_layers={num_layers}")
 
-    decoder = EnhancedDecoder(
-        vocab_dim=output_dim,
-        hidden_dim=hidden_dim,
-        num_heads=num_heads,
-        num_layers=num_layers,
-        ff_dim=ff_dim,
-        output_dim=output_dim,
-        dropout=dropout,
-        device=device,
-        max_dist=max_dist
-    )
+    try:
+        # エンコーダーとデコーダーの作成
+        encoder = EnhancedEncoder(
+            input_dim=input_dim,
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            ff_dim=ff_dim,
+            dropout=dropout,
+            device=device,
+            max_dist=max_dist
+        )
 
-    # モデルを作成して返す
-    model = EnhancedTranslationModel(
-        encoder=encoder,
-        decoder=decoder,
-        src_pad_idx=src_pad_idx,
-        tgt_pad_idx=tgt_pad_idx,
-        device=device
-    )
+        decoder = EnhancedDecoder(
+            vocab_dim=output_dim,
+            hidden_dim=hidden_dim,
+            num_heads=num_heads,
+            num_layers=num_layers,
+            ff_dim=ff_dim,
+            output_dim=output_dim,
+            dropout=dropout,
+            device=device,
+            max_dist=max_dist
+        )
 
-    return model
+        # モデルを作成して返す
+        model = EnhancedTranslationModel(
+            encoder=encoder,
+            decoder=decoder,
+            src_pad_idx=src_pad_idx,
+            tgt_pad_idx=tgt_pad_idx,
+            device=device
+        )
+
+        return model
+
+    except Exception as e:
+        logging.error(f"モデル作成中にエラー発生: {e}")
+        raise

@@ -183,6 +183,9 @@ def load_config(config_path="config.json"):
 # 設定を読み込む
 CONFIG = load_config()
 
+# レイヤードロップアウト設定を明示的にエクスポート
+LAYER_DROPOUT = CONFIG.get("LAYER_DROPOUT", 0.1)
+
 # CUDA利用可能性
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 

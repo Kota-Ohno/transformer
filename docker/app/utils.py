@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from config import MAX_SEQ_LENGTH
+from config import CONFIG, MODEL_CONFIG
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction, corpus_bleu
 import nltk
 import os
@@ -377,10 +377,10 @@ def validate(model, val_loader, criterion, device, output_dim, output_vocab):
             X_batch, y_batch = X_batch.to(device), y_batch.to(device)
 
             # 長いシーケンスを切り詰め
-            if X_batch.size(1) > MAX_SEQ_LENGTH:
-                X_batch = X_batch[:, :MAX_SEQ_LENGTH]
-            if y_batch.size(1) > MAX_SEQ_LENGTH:
-                y_batch = y_batch[:, :MAX_SEQ_LENGTH]
+            if X_batch.size(1) > CONFIG["MAX_SEQ_LENGTH"]:
+                X_batch = X_batch[:, :CONFIG["MAX_SEQ_LENGTH"]]
+            if y_batch.size(1) > CONFIG["MAX_SEQ_LENGTH"]:
+                y_batch = y_batch[:, :CONFIG["MAX_SEQ_LENGTH"]]
 
             # デコーダーへの入力とターゲットを作成
             max_len = y_batch.size(1) - 1

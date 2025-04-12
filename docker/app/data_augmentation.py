@@ -5,9 +5,7 @@ import os
 import logging
 from typing import List, Tuple, Dict
 
-from config import (
-    DEVICE, TRANSLATION_SOURCE, TRANSLATION_DESTINATION
-)
+from config import CONFIG
 from data import normalize_text, tokenize_with_sentencepiece
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -287,13 +285,13 @@ class DataAugmentor:
                 normalized_text = normalize_text(text, src_lang)
 
                 # トークン化
-                if src_lang == TRANSLATION_SOURCE:
+                if src_lang == CONFIG["TRANSLATION_SOURCE"]:
                     tokens = tokenize_with_sentencepiece(normalized_text, self.sp_src)
                 else:
                     tokens = tokenize_with_sentencepiece(normalized_text, self.sp_tgt)
 
                 # トークンをテンソルに変換
-                input_tensor = torch.tensor([tokens], dtype=torch.long).to(DEVICE)
+                input_tensor = torch.tensor([tokens], dtype=torch.long).to(CONFIG["DEVICE"])
 
                 # 翻訳
                 try:
@@ -303,7 +301,7 @@ class DataAugmentor:
                     output_ids = output_tensor[0].cpu().numpy().tolist()
 
                     # IDをトークンに変換
-                    if tgt_lang == TRANSLATION_SOURCE:
+                    if tgt_lang == CONFIG["TRANSLATION_SOURCE"]:
                         output_tokens = self.sp_src.decode_ids(output_ids)
                     else:
                         output_tokens = self.sp_tgt.decode_ids(output_ids)
@@ -477,8 +475,8 @@ if __name__ == "__main__":
         # テストデータをトークン化
         tokenized_data = []
         for src_text, tgt_text in test_data:
-            src_tokens = tokenize_with_sentencepiece(src_text, sp_src, TRANSLATION_SOURCE)
-            tgt_tokens = tokenize_with_sentencepiece(tgt_text, sp_tgt, TRANSLATION_DESTINATION)
+            src_tokens = tokenize_with_sentencepiece(src_text, sp_src, CONFIG["TRANSLATION_SOURCE"])
+            tgt_tokens = tokenize_with_sentencepiece(tgt_text, sp_tgt, CONFIG["TRANSLATION_DESTINATION"])
             tokenized_data.append((src_tokens, tgt_tokens))
 
         # データ拡張を適用

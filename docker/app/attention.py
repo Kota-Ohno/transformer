@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import math
-from config import HIDDEN_SIZE
+from config import CONFIG, MODEL_CONFIG
 
 # キャッシュサイズの最大値
 MAX_CACHE_ENTRIES = 100
