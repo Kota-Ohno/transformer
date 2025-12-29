@@ -1,5 +1,12 @@
 FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
 
+# 作業ディレクトリの設定
+WORKDIR /src
+
+# requirements.txtをコピーしてライブラリをインストール
+COPY app/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
 # CUDA 12.xサポート付きでspaCyをインストール
 # 注: 実際の動作環境でCUDA 12.xサポートが適切に機能するか確認が必要です
 RUN pip install -U pip==23.1.2 setuptools==68.0.0 wheel==0.40.0 && \
@@ -11,7 +18,7 @@ RUN pip install -U pip==23.1.2 setuptools==68.0.0 wheel==0.40.0 && \
     pip install sacrebleu==2.3.1 && \
     pip install nltk==3.8.1 && \
     # 機械学習関連パッケージ
-    pip install scikit_learn==1.3.0 && \
+    pip install scikit-learn==1.3.0 && \
     # データハンドリング関連
     pip install pandas==2.0.3 && \
     pip install datasets==2.14.5 && \
@@ -21,9 +28,7 @@ RUN pip install -U pip==23.1.2 setuptools==68.0.0 wheel==0.40.0 && \
     # エラー処理強化
     pip install better-exceptions==0.3.3
 
-# 作業ディレクトリの設定
-WORKDIR /src
-
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
 ENV TRANSFORMER_DEVICE=cuda
+

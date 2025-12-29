@@ -6,6 +6,7 @@ import argparse
 import subprocess
 import logging
 import sys
+from packaging import version
 from data.data import create_data_loader, set_data, collate_fn
 from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from utils.scheduler import WarmupScheduler
@@ -114,8 +115,8 @@ def main():
         train_token_ids = train_token_ids[:args.limit_samples]
 
     # ボキャブラリの読み込み
-    input_vocab = torch.load(INPUT_VOCAB_PATH)
-    output_vocab = torch.load(OUTPUT_VOCAB_PATH)
+    input_vocab = torch.load(INPUT_VOCAB_PATH, weights_only=True)
+    output_vocab = torch.load(OUTPUT_VOCAB_PATH, weights_only=True)
 
     # データ拡張（オプション）
     if args.augment:
@@ -150,13 +151,6 @@ def main():
         if gpu_props.total_memory < 8 * 1024 * 1024 * 1024:  # 8GB未満
             logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
             args.fast = True
-
-    # メモリ使用量を削減するため、事前にPINメモリを割り当てる（GPU使用時）
-    if device.type == 'cuda':
-        # 事前にPINメモリを確保してデータ転送を高速化
-        torch.cuda.empty_cache()
-        reserved_memory = int(torch.cuda.get_device_properties(0).total_memory * 0.1)  # 10%のメモリを予約
-        pin_memory_tensor = torch.empty(reserved_memory // 4, dtype=torch.float).pin_memory()
 
     # データセットとデータローダーの作成
     train_dataset = set_data(train_token_ids, train_token_ids)
@@ -249,7 +243,7 @@ def main():
     )
 
     # JITコンパイルをオプションで適用
-    if CONFIG.training_config.use_jit_compile and torch.__version__ >= "2.0.0" and device.type == 'cuda':
+    if CONFIG.training_config.use_jit_compile and version.parse(torch.__version__) >= version.parse("2.0.0") and device.type == 'cuda':
         try:
             logging.info("PyTorch JITコンパイルを適用します")
             import torch._dynamo as dynamo
@@ -330,3 +324,7 @@ def main():
         output_vocab=output_vocab
     )
     trainer.train_model()
+
+
+if __name__ == "__main__":
+    main()

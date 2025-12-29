@@ -25,17 +25,21 @@ class DataAugmentor:
         self.sp_tgt = sp_tgt
         self.translation_model = translation_model
 
-    def token_masking(self, token_ids: List[int], mask_prob: float = 0.15) -> List[int]:
+    def token_masking(self, token_ids: List[int], mask_prob: float = 0.15, rng: random.Random = None) -> List[int]:
         """
         トークンの一部をマスクする拡張手法
 
         Args:
             token_ids: 入力トークンID列
             mask_prob: マスクする確率
+            rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
 
         Returns:
             拡張されたトークンID列
         """
+        if rng is None:
+            rng = random
+
         if not token_ids or not isinstance(token_ids, list):
             return token_ids if isinstance(token_ids, list) else []
 
@@ -58,22 +62,26 @@ class DataAugmentor:
 
         # マスク対象の位置をランダムに選択
         for i in range(len(result)):
-            if random.random() < mask_prob:
+            if rng.random() < mask_prob:
                 result[i] = mask_id
 
         return result
 
-    def token_deletion(self, token_ids: List[int], del_prob: float = 0.1) -> List[int]:
+    def token_deletion(self, token_ids: List[int], del_prob: float = 0.1, rng: random.Random = None) -> List[int]:
         """
         トークンの一部を削除する拡張手法
 
         Args:
             token_ids: 入力トークンID列
             del_prob: 削除する確率
+            rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
 
         Returns:
             拡張されたトークンID列
         """
+        if rng is None:
+            rng = random
+
         if not token_ids or not isinstance(token_ids, list):
             return token_ids if isinstance(token_ids, list) else []
 
@@ -94,22 +102,26 @@ class DataAugmentor:
 
         # 削除対象の位置をランダムに選択
         for i in range(len(valid_tokens)):
-            if random.random() >= del_prob:  # 削除しない場合
+            if rng.random() >= del_prob:  # 削除しない場合
                 result.append(valid_tokens[i])
 
         return result if result else valid_tokens  # 空になった場合は元に戻す
 
-    def token_replacement(self, token_ids: List[int], replace_prob: float = 0.1) -> List[int]:
+    def token_replacement(self, token_ids: List[int], replace_prob: float = 0.1, rng: random.Random = None) -> List[int]:
         """
         トークンの一部をランダムに置換する拡張手法
 
         Args:
             token_ids: 入力トークンID列
             replace_prob: 置換する確率
+            rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
 
         Returns:
             拡張されたトークンID列
         """
+        if rng is None:
+            rng = random
+
         if not token_ids or not isinstance(token_ids, list):
             return token_ids if isinstance(token_ids, list) else []
 
@@ -132,13 +144,13 @@ class DataAugmentor:
 
         # 置換対象の位置をランダムに選択して置換
         for i in range(len(result)):
-            if random.random() < replace_prob:
+            if rng.random() < replace_prob:
                 # ソース言語の語彙からランダムに選択（特殊トークンを避ける）
-                result[i] = random.randint(4, vocab_size_src - 1)  # 特殊トークンを避ける
+                result[i] = rng.randint(4, vocab_size_src - 1)  # 特殊トークンを避ける
 
         return result
 
-    def token_permutation(self, token_ids: List[int], window_size: int = 3, perm_prob: float = 0.1) -> List[int]:
+    def token_permutation(self, token_ids: List[int], window_size: int = 3, perm_prob: float = 0.1, rng: random.Random = None) -> List[int]:
         """
         トークンの順序を局所的に入れ替える拡張手法
 
@@ -146,10 +158,14 @@ class DataAugmentor:
             token_ids: 入力トークンID列
             window_size: 入れ替えを行う窓サイズ
             perm_prob: 入れ替えを行う確率
+            rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
 
         Returns:
             拡張されたトークンID列
         """
+        if rng is None:
+            rng = random
+
         if not token_ids or not isinstance(token_ids, list):
             return token_ids if isinstance(token_ids, list) else []
 
@@ -170,9 +186,9 @@ class DataAugmentor:
 
         # 窓内でのトークン入れ替え
         for i in range(0, len(result) - window_size + 1, window_size):
-            if random.random() < perm_prob:
+            if rng.random() < perm_prob:
                 window = result[i:i+window_size]
-                random.shuffle(window)
+                rng.shuffle(window)
                 result[i:i+window_size] = window
 
         return result
@@ -273,7 +289,7 @@ class DataAugmentor:
         return result
 
     def apply_augmentations(self, token_ids: List[int], techniques: List[str] = None,
-                            probs: Dict[str, float] = None) -> List[int]:
+                            probs: Dict[str, float] = None, rng: random.Random = None) -> List[int]:
         """
         指定された拡張手法を組み合わせて適用する
 
@@ -281,10 +297,14 @@ class DataAugmentor:
             token_ids: 入力トークンID列
             techniques: 適用する拡張手法のリスト
             probs: 各手法の適用確率
+            rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
 
         Returns:
             拡張されたトークンID列
         """
+        if rng is None:
+            rng = random
+
         if not isinstance(token_ids, list):
             logging.warning(f"token_idsがリストではありません: {type(token_ids)}。元のデータを返します。")
             return [] if token_ids is None else [token_ids] if not isinstance(token_ids, list) else token_ids
@@ -309,17 +329,17 @@ class DataAugmentor:
         for technique in techniques:
             try:
                 if technique == "masking":
-                    if random.random() < probs.get("masking", 0.15):
-                        augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", 0.15))
+                    if rng.random() < probs.get("masking", 0.15):
+                        augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", 0.15), rng=rng)
                 elif technique == "deletion":
-                    if random.random() < probs.get("deletion", 0.1):
-                        augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", 0.1))
+                    if rng.random() < probs.get("deletion", 0.1):
+                        augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", 0.1), rng=rng)
                 elif technique == "replacement":
-                    if random.random() < probs.get("replacement", 0.1):
-                        augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", 0.1))
+                    if rng.random() < probs.get("replacement", 0.1):
+                        augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", 0.1), rng=rng)
                 elif technique == "permutation":
-                    if random.random() < probs.get("permutation", 0.1):
-                        augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", 0.1))
+                    if rng.random() < probs.get("permutation", 0.1):
+                        augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", 0.1), rng=rng)
             except Exception as e:
                 error_count += 1
                 # スタックトレースも含めて詳細なエラー情報を出力
@@ -331,6 +351,33 @@ class DataAugmentor:
                     break
 
         return augmented_ids
+
+    def apply_pair_augmentations(self, src_tokens: List[int], tgt_tokens: List[int],
+                                  techniques: List[str] = None, probs: Dict[str, float] = None,
+                                  seed: int = None) -> Tuple[List[int], List[int]]:
+        """
+        ソースとターゲットのペアに対して同期された拡張を適用する
+
+        Args:
+            src_tokens: ソース言語のトークンID列
+            tgt_tokens: ターゲット言語のトークンID列
+            techniques: 適用する拡張手法のリスト
+            probs: 各手法の適用確率
+            seed: ランダムシード（Noneの場合はランダムに生成）
+
+        Returns:
+            拡張された(src_tokens, tgt_tokens)のタプル
+        """
+        # ペアごとに決定論的なRNGを生成
+        if seed is None:
+            seed = random.randint(0, 2**31 - 1)
+        pair_rng = random.Random(seed)
+
+        # 同じRNGを使用してsrcとtgtの両方を拡張
+        aug_src_tokens = self.apply_augmentations(src_tokens, techniques, probs, rng=pair_rng)
+        aug_tgt_tokens = self.apply_augmentations(tgt_tokens, techniques, probs, rng=pair_rng)
+
+        return aug_src_tokens, aug_tgt_tokens
 
 def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
                    sp_src, sp_tgt,
@@ -387,9 +434,12 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
                 logging.warning(f"サンプル {idx} のトークンがリスト形式ではありません: {type(src_tokens)}, {type(tgt_tokens)}。スキップします。")
                 continue
 
-            # ソースとターゲットの両方を拡張
-            aug_src_tokens = augmentor.apply_augmentations(src_tokens, techniques)
-            aug_tgt_tokens = augmentor.apply_augmentations(tgt_tokens, techniques)
+            # ソースとターゲットのペアに対して同期された拡張を適用
+            # ペアごとに決定論的なシードを生成して、srcとtgtで同じランダム状態を使用
+            pair_seed = random.randint(0, 2**31 - 1)
+            aug_src_tokens, aug_tgt_tokens = augmentor.apply_pair_augmentations(
+                src_tokens, tgt_tokens, techniques, seed=pair_seed
+            )
 
             # 拡張データを追加
             augmented_data.append((aug_src_tokens, aug_tgt_tokens))

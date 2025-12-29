@@ -1,0 +1,164 @@
+import torch
+import torch.nn as nn
+import math
+from utils.config import CONFIG
+import logging
+
+# キャッシュサイズの最大値
+MAX_CACHE_ENTRIES = 100
+
+class ScaledDotProductAttention(nn.Module):
+    """スケーリングされたドット積アテンション"""
+
+    def __init__(self, dropout=0.1):
+        super(ScaledDotProductAttention, self).__init__()
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, q, k, v, mask=None):
+        """
+        Args:
+            q: クエリ [..., seq_len_q, d_k]
+            k: キー [..., seq_len_k, d_k]
+            v: 値 [..., seq_len_k, d_v]
+            mask: マスク [..., seq_len_q, seq_len_k]
+        Returns:
+            output: アテンション適用後の出力 [..., seq_len_q, d_v]
+            attention_weights: アテンションの重み [..., seq_len_q, seq_len_k]
+        """
+        d_k = q.size(-1)
+
+        # Q・K^T / sqrt(d_k)
+        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
+
+        # マスク適用（0のところに大きな負の値）
+        if mask is not None:
+            scores = scores.masked_fill(mask == 0, -1e9)
+
+        # アテンションウェイト計算
+        attention_weights = torch.softmax(scores, dim=-1)
+        attention_weights = self.dropout(attention_weights)
+
+        # V との積
+        output = torch.matmul(attention_weights, v)
+
+        return output, attention_weights
+
+class MultiHeadAttention(nn.Module):
+    """マルチヘッドアテンション"""
+
+    def __init__(self, d_model, num_heads, dropout=0.1):
+        super(MultiHeadAttention, self).__init__()
+
+        assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
+
+        self.d_model = d_model
+        self.num_heads = num_heads
+        self.d_k = d_model // num_heads
+
+        # 線形変換層
+        self.wq = nn.Linear(d_model, d_model)
+        self.wk = nn.Linear(d_model, d_model)
+        self.wv = nn.Linear(d_model, d_model)
+        self.wo = nn.Linear(d_model, d_model)
+
+        self.attention = ScaledDotProductAttention(dropout)
+        self.dropout = nn.Dropout(dropout)
+
+    def split_heads(self, x):
+        """入力テンソルをヘッドに分割"""
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1, self.num_heads, self.d_k)
+        return x.transpose(1, 2)
+
+    def combine_heads(self, x):
+        """ヘッドを結合"""
+        batch_size = x.size(0)
+        x = x.transpose(1, 2)
+        return x.reshape(batch_size, -1, self.d_model)
+
+    def forward(self, q, k, v, mask=None, cached_k=None, cached_v=None, return_cache=False):
+        """
+        Args:
+            q: クエリ [batch_size, seq_len_q, d_model]
+            k: キー [batch_size, seq_len_k, d_model]
+            v: 値 [batch_size, seq_len_v, d_model]
+            mask: マスク [batch_size, 1, seq_len_q, seq_len_k] or [batch_size, seq_len_q, seq_len_k]
+            cached_k: キャッシュされたキー（推論時に使用）
+            cached_v: キャッシュされた値（推論時に使用）
+            return_cache: キャッシュを返すかどうか
+        Returns:
+            output: アテンション出力 [batch_size, seq_len_q, d_model]
+            キャッシュ情報（return_cache=Trueの場合）
+        """
+        batch_size = q.size(0)
+
+        # 線形変換
+        q = self.wq(q)
+
+        # キャッシュを使用するか
+        if cached_k is None:
+            k = self.wk(k)
+        else:
+            k = cached_k
+
+        if cached_v is None:
+            v = self.wv(v)
+        else:
+            v = cached_v
+
+        # ヘッドに分割
+        q = self.split_heads(q)  # [batch_size, num_heads, seq_len_q, d_k]
+
+        if cached_k is None:
+            k = self.split_heads(k)  # [batch_size, num_heads, seq_len_k, d_k]
+
+        if cached_v is None:
+            v = self.split_heads(v)  # [batch_size, num_heads, seq_len_v, d_k]
+
+        # マスクの次元調整
+        if mask is not None and mask.dim() == 3:
+            # [batch_size, seq_len_q, seq_len_k] -> [batch_size, 1, seq_len_q, seq_len_k]
+            mask = mask.unsqueeze(1)
+
+        # スケールドドットプロダクトアテンション
+        attn_output, attention_weights = self.attention(q, k, v, mask)
+
+        # ヘッドの結合
+        output = self.combine_heads(attn_output)  # [batch_size, seq_len_q, d_model]
+
+        # 出力の線形変換
+        output = self.wo(output)
+
+        if return_cache:
+            return output, attention_weights, k, v
+
+        return output
+
+# キャッシュ管理の補助関数
+def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
+    """
+    キャッシュサイズが指定された最大値を超えた場合に古いエントリを削除します。
+
+    Args:
+        cache (dict): 管理対象のキャッシュ辞書
+        max_entries (int): 許容される最大エントリ数
+
+    Returns:
+        dict: サイズ調整後のキャッシュ
+    """
+    if len(cache) <= max_entries:
+        return cache
+
+    # 最も古いエントリを削除（ここではシンプルに最初のn個を削除）
+    num_to_remove = len(cache) - max_entries
+    if num_to_remove <= 0:
+        return cache
+
+    # キーのリストを取得
+    keys = list(cache.keys())
+
+    # 最初のnum_to_remove個のキーを削除
+    for key in keys[:num_to_remove]:
+        del cache[key]
+
+    return cache
