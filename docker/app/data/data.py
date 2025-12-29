@@ -6,6 +6,8 @@ import spacy
 import os
 import sentencepiece as spm
 import re
+import logging
+import traceback
 
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
@@ -77,6 +79,20 @@ def collate_fn(batch):
     X_flat = [flatten_and_convert(x) for x in X]
     Y_flat = [flatten_and_convert(y) for y in Y]
 
+    # 長さ1以下のシーケンスをフィルタリング（訓練に有用でないため除外）
+    valid_indices = [i for i, y_seq in enumerate(Y_flat) if len(y_seq) > 1]
+
+    if len(valid_indices) == 0:
+        # バッチ内のすべてのサンプルが無効な場合
+        raise ValueError(
+            "Batch contains only sequences with length <= 1. "
+            "Please ensure your dataset contains sequences with length > 1."
+        )
+
+    # 有効なサンプルのみを保持
+    X_flat = [X_flat[i] for i in valid_indices]
+    Y_flat = [Y_flat[i] for i in valid_indices]
+
     # 最大長を計算
     max_length_X = max([len(x) for x in X_flat], default=1)
     max_length_Y = max([len(y) for y in Y_flat], default=1)
@@ -91,26 +107,19 @@ def collate_fn(batch):
         Y_tensor = torch.tensor(Y_padded, dtype=torch.long)
 
         # ターゲット入力と出力の作成
-        # 長さ1の場合の特別処理
-        if Y_tensor.size(1) <= 1:
-            # ダミーデータを追加（最小でも2の長さが必要）
-            Y_tensor = torch.cat([Y_tensor, torch.zeros_like(Y_tensor)], dim=1)
-
+        # フィルタリングにより、Y_tensor.size(1) > 1が保証される
         tgt_input = Y_tensor[:, :-1]  # 最後のトークンを除外
         tgt_output = Y_tensor[:, 1:]  # 最初のトークンを除外
 
         return X_tensor, tgt_input, tgt_output
 
     except Exception as e:
-        print(f"Error in collate_fn: {e}")
-        print(f"Emergency fallback activated")
+        # 完全な例外情報とトレースバックをログに記録
+        logging.exception(f"Error in collate_fn: {e}")
+        logging.error(f"Traceback:\n{traceback.format_exc()}")
 
-        # 最後の手段: 完全に均一化されたダミーデータを返す
-        batch_size = len(X)
-        dummy_x = torch.zeros((batch_size, 2), dtype=torch.long)
-        dummy_y = torch.zeros((batch_size, 1), dtype=torch.long)
-
-        return dummy_x, dummy_y, dummy_y
+        # エラーを再発生させて処理を停止し、問題を可視化
+        raise RuntimeError(f"Failed to process batch in collate_fn: {e}") from e
 
 # データローダーを作成
 def create_data_loader(dataset_or_data, batch_size):
@@ -136,17 +145,72 @@ def create_data_loader(dataset_or_data, batch_size):
     # データローダー作成
     return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
-# spacyのモデルをロード
-nlp_ja = spacy.load("ja_core_news_md")
-nlp_en = spacy.load("en_core_web_md")
+# spacyのモデルを遅延ロード（グローバルロードを削除）
+_nlp_ja = None
+_nlp_en = None
+
+def get_nlp_ja():
+    """
+    日本語spacyモデルを遅延ロードするアクセサ関数
+    モデルが存在しない場合はNoneを返し、エラーをログに記録
+    """
+    global _nlp_ja
+    if _nlp_ja is None:
+        try:
+            _nlp_ja = spacy.load("ja_core_news_md")
+            logging.info("Successfully loaded Japanese spacy model: ja_core_news_md")
+        except OSError as e:
+            logging.error(f"Failed to load Japanese spacy model 'ja_core_news_md': {e}")
+            logging.error("Please install the model with: python -m spacy download ja_core_news_md")
+            _nlp_ja = None
+        except Exception as e:
+            logging.error(f"Unexpected error loading Japanese spacy model: {e}")
+            logging.error(f"Traceback:\n{traceback.format_exc()}")
+            _nlp_ja = None
+    return _nlp_ja
+
+def get_nlp_en():
+    """
+    英語spacyモデルを遅延ロードするアクセサ関数
+    モデルが存在しない場合はNoneを返し、エラーをログに記録
+    """
+    global _nlp_en
+    if _nlp_en is None:
+        try:
+            _nlp_en = spacy.load("en_core_web_md")
+            logging.info("Successfully loaded English spacy model: en_core_web_md")
+        except OSError as e:
+            logging.error(f"Failed to load English spacy model 'en_core_web_md': {e}")
+            logging.error("Please install the model with: python -m spacy download en_core_web_md")
+            _nlp_en = None
+        except Exception as e:
+            logging.error(f"Unexpected error loading English spacy model: {e}")
+            logging.error(f"Traceback:\n{traceback.format_exc()}")
+            _nlp_en = None
+    return _nlp_en
 
 def tokenize(sentence, lang):
+    # Validate language upfront
+    if lang not in ("ja_JP", "en_US"):
+        raise ValueError(f"Unsupported language: {lang}. Supported languages are 'ja_JP' and 'en_US'.")
+
+    # Process sentence based on language with lazy-loaded models
     if lang == "ja_JP":
-        doc = nlp_ja(sentence)
-    elif lang == "en_US":
-        doc = nlp_en(sentence)
-    else:
-        print("not yet implemented")
+        nlp = get_nlp_ja()
+        if nlp is None:
+            raise RuntimeError(
+                "Japanese spacy model 'ja_core_news_md' is not available. "
+                "Please install it with: python -m spacy download ja_core_news_md"
+            )
+        doc = nlp(sentence)
+    else:  # lang == "en_US"
+        nlp = get_nlp_en()
+        if nlp is None:
+            raise RuntimeError(
+                "English spacy model 'en_core_web_md' is not available. "
+                "Please install it with: python -m spacy download en_core_web_md"
+            )
+        doc = nlp(sentence)
 
     tokens = [token.text for token in doc]
     return tokens
@@ -157,9 +221,15 @@ class Vocabulary:
         if special_tokens is None:
             special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2}
 
-        self.token2id = special_tokens
-        self.id2token = {v: k for k, v in special_tokens.items()}
-        self.next_id = len(special_tokens)
+        self.token2id = special_tokens.copy()
+        # '<unk>'が存在しない場合は追加（安全なフォールバック用）
+        if '<unk>' not in self.token2id:
+            # 既存のIDの最大値を取得し、+1した値を割り当て
+            max_id = max(self.token2id.values()) if self.token2id else -1
+            self.token2id['<unk>'] = max_id + 1
+
+        self.id2token = {v: k for k, v in self.token2id.items()}
+        self.next_id = len(self.token2id)
 
     def add_token(self, token):
         if token not in self.token2id:
@@ -181,7 +251,9 @@ class Vocabulary:
 
     # __getitem__メソッドを追加
     def __getitem__(self, token):
-        return self.token2id.get(token, self.token2id['<unk>'])
+        # 安全なルックアップ：tokenが見つからない場合、'<unk>'を試み、それも存在しない場合は0を返す
+        unk_id = self.token2id.get('<unk>', 0)
+        return self.token2id.get(token, unk_id)
 
 # 使用例
 def build_vocabulary(tokenized_data, special_tokens=None):
@@ -200,9 +272,20 @@ def tokens_to_ids(tokens, vocabulary):
 def ids_to_tokens(ids, vocabulary):
     # vocabularyがVocabularyクラスのインスタンスである場合
     if hasattr(vocabulary, 'id2token'):
-        return [vocabulary.id2token[id] for id in ids]
+        # 安全なルックアップを使用（存在しないIDの場合は'<unk>'を返す）
+        return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # トークンとIDのマッピングを反転して使用
-        id_to_token = {v: k for k, v in vocabulary.items()}
+        # 逆マッピングをキャッシュするための関数属性を初期化
+        if not hasattr(ids_to_tokens, '_id_to_token_cache'):
+            ids_to_tokens._id_to_token_cache = {}
+
+        # vocabularyオブジェクトのIDをキーとしてキャッシュを管理
+        vocab_id = id(vocabulary)
+
+        # キャッシュに存在しない場合のみ逆マッピングを構築
+        if vocab_id not in ids_to_tokens._id_to_token_cache:
+            ids_to_tokens._id_to_token_cache[vocab_id] = {v: k for k, v in vocabulary.items()}
+
+        id_to_token = ids_to_tokens._id_to_token_cache[vocab_id]
         return [id_to_token.get(id, '<unk>') for id in ids]

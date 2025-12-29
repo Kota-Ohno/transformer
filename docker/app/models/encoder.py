@@ -83,8 +83,28 @@ class Encoder(nn.Module):
         Returns:
             出力テンソル [batch_size, seq_len, d_model]
         """
-        # 入力境界チェック
-        x = torch.clamp(x, 0, self.embedding.num_embeddings - 1)
+        # 入力バリデーション: 整数型と範囲チェック
+        vocab_size = self.embedding.num_embeddings
+
+        # 整数型チェック
+        if not x.dtype.is_integer:
+            raise TypeError(
+                f"Expected integer dtype for token indices, but got {x.dtype}. "
+                f"Input shape: {x.shape}"
+            )
+
+        # 範囲チェック
+        x_min = x.min().item()
+        x_max = x.max().item()
+        valid_min = 0
+        valid_max = vocab_size - 1
+
+        if x_min < valid_min or x_max > valid_max:
+            raise ValueError(
+                f"Token indices out of valid range [0, {valid_max}]. "
+                f"Found range: [{x_min}, {x_max}]. "
+                f"Input shape: {x.shape}, vocab_size: {vocab_size}"
+            )
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x)

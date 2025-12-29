@@ -130,17 +130,22 @@ def main():
 
         if choice == '1' or choice == 'tokenizer':
             display_tokenizer_help()
+            input("Press Enter to continue...")
         elif choice == '2' or choice == 'train':
             display_train_help()
+            input("Press Enter to continue...")
         elif choice == '3' or choice == 'predict':
             display_predict_help()
+            input("Press Enter to continue...")
         elif choice == '4' or choice == 'augment':
             display_augment_help()
+            input("Press Enter to continue...")
         elif choice == '5' or choice == 'all':
             display_tokenizer_help()
             display_train_help()
             display_predict_help()
             display_augment_help()
+            input("Press Enter to continue...")
         else:
             print("無効な選択です。もう一度試してください。")
             time.sleep(1)

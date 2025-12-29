@@ -25,7 +25,8 @@ class DataAugmentor:
         self.sp_tgt = sp_tgt
         self.translation_model = translation_model
 
-    def token_masking(self, token_ids: List[int], mask_prob: float = 0.15, rng: random.Random = None) -> List[int]:
+    def token_masking(self, token_ids: List[int], mask_prob: float = 0.15, rng: random.Random = None,
+                      tokenizer=None) -> List[int]:
         """
         トークンの一部をマスクする拡張手法
 
@@ -33,6 +34,7 @@ class DataAugmentor:
             token_ids: 入力トークンID列
             mask_prob: マスクする確率
             rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
+            tokenizer: 使用するSentencePieceトークナイザー（Noneの場合はsp_srcを使用）
 
         Returns:
             拡張されたトークンID列
@@ -57,8 +59,19 @@ class DataAugmentor:
         if not result:
             return result
 
-        # マスク用のIDを取得（<unk>トークンを使用）
-        mask_id = 1  # <unk>のIDを使用
+        # 使用するトークナイザーを決定
+        if tokenizer is None:
+            tokenizer = self.sp_src
+
+        # トークナイザーから<unk>トークンIDを動的に取得
+        mask_id = 1  # デフォルト値（フォールバック用）
+        try:
+            if hasattr(tokenizer, 'unk_id') and callable(tokenizer.unk_id):
+                unk_id = tokenizer.unk_id()
+                if unk_id >= 0:
+                    mask_id = unk_id
+        except Exception as e:
+            logging.warning(f"<unk>トークンIDの取得中にエラーが発生しました: {e}。デフォルト値({mask_id})を使用します。")
 
         # マスク対象の位置をランダムに選択
         for i in range(len(result)):
@@ -107,7 +120,8 @@ class DataAugmentor:
 
         return result if result else valid_tokens  # 空になった場合は元に戻す
 
-    def token_replacement(self, token_ids: List[int], replace_prob: float = 0.1, rng: random.Random = None) -> List[int]:
+    def token_replacement(self, token_ids: List[int], replace_prob: float = 0.1, rng: random.Random = None,
+                          tokenizer=None) -> List[int]:
         """
         トークンの一部をランダムに置換する拡張手法
 
@@ -115,6 +129,7 @@ class DataAugmentor:
             token_ids: 入力トークンID列
             replace_prob: 置換する確率
             rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
+            tokenizer: 使用するSentencePieceトークナイザー（Noneの場合はsp_srcを使用）
 
         Returns:
             拡張されたトークンID列
@@ -139,14 +154,62 @@ class DataAugmentor:
         if not result:
             return result
 
-        # 置換用の語彙サイズを取得
-        vocab_size_src = len(self.sp_src)
+        # 使用するトークナイザーを決定
+        if tokenizer is None:
+            tokenizer = self.sp_src
+
+        # トークナイザーから特殊トークンIDを動的に取得
+        special_ids = set()
+        try:
+            # SentencePieceの特殊トークンIDを取得
+            if hasattr(tokenizer, 'pad_id') and callable(tokenizer.pad_id):
+                pad_id = tokenizer.pad_id()
+                if pad_id >= 0:
+                    special_ids.add(pad_id)
+            if hasattr(tokenizer, 'unk_id') and callable(tokenizer.unk_id):
+                unk_id = tokenizer.unk_id()
+                if unk_id >= 0:
+                    special_ids.add(unk_id)
+            if hasattr(tokenizer, 'bos_id') and callable(tokenizer.bos_id):
+                bos_id = tokenizer.bos_id()
+                if bos_id >= 0:
+                    special_ids.add(bos_id)
+            if hasattr(tokenizer, 'eos_id') and callable(tokenizer.eos_id):
+                eos_id = tokenizer.eos_id()
+                if eos_id >= 0:
+                    special_ids.add(eos_id)
+        except Exception as e:
+            logging.warning(f"特殊トークンIDの取得中にエラーが発生しました: {e}。デフォルト値を使用します。")
+            # フォールバック: 一般的な特殊トークンID（0-3）を仮定
+            special_ids = {0, 1, 2, 3}
+
+        # 有効なID範囲を計算
+        vocab_size = len(tokenizer)
+        if special_ids:
+            start = max(special_ids) + 1
+        else:
+            start = 0
+
+        end = vocab_size - 1
+
+        # 範囲の検証
+        if start > end:
+            logging.warning(f"無効なID範囲: start={start}, end={end}, vocab_size={vocab_size}。"
+                          f"特殊トークンID={special_ids}。フォールバック値を使用します。")
+            # 特殊トークンIDを除外した範囲を再計算
+            non_special_ids = [i for i in range(vocab_size) if i not in special_ids]
+            if not non_special_ids:
+                # すべてが特殊トークンの場合（異常なケース）
+                logging.error(f"すべてのIDが特殊トークンです。置換をスキップします。")
+                return result
+            start = min(non_special_ids)
+            end = max(non_special_ids)
 
         # 置換対象の位置をランダムに選択して置換
         for i in range(len(result)):
             if rng.random() < replace_prob:
-                # ソース言語の語彙からランダムに選択（特殊トークンを避ける）
-                result[i] = rng.randint(4, vocab_size_src - 1)  # 特殊トークンを避ける
+                # 有効なID範囲からランダムに選択
+                result[i] = rng.randint(start, end)
 
         return result
 
@@ -229,7 +292,7 @@ class DataAugmentor:
 
         # 目標言語 -> 元言語へ逆翻訳
         batches = [forward_translations[i:i+batch_size] for i in range(0, len(forward_translations), batch_size)]
-        for batch in tqdm(batches, desc="逆翻訳（後方）"):
+        for batch_idx, batch in enumerate(tqdm(batches, desc="逆翻訳（後方）")):
             try:
                 # 目標言語から元言語への翻訳
                 translations = self._translate_batch(batch, tgt_lang, src_lang)
@@ -237,7 +300,17 @@ class DataAugmentor:
             except Exception as e:
                 logging.error(f"逆翻訳中にエラーが発生しました: {e}")
                 # エラー発生時は元のテキストをそのまま使用
-                augmented_texts.extend([src_texts[len(augmented_texts) + i] for i in range(len(batch))])
+                # バッチの開始インデックスを計算して、対応するsrc_textsの要素を取得
+                batch_start_idx = batch_idx * batch_size
+                fallback_texts = []
+                for i in range(len(batch)):
+                    original_idx = batch_start_idx + i
+                    if original_idx < len(src_texts):
+                        fallback_texts.append(src_texts[original_idx])
+                    else:
+                        logging.warning(f"インデックス {original_idx} が範囲外です。元のバッチ要素を使用します。")
+                        fallback_texts.append(batch[i])
+                augmented_texts.extend(fallback_texts)
 
         return augmented_texts
 
@@ -254,23 +327,37 @@ class DataAugmentor:
         model = self.translation_model
         model.eval()
 
+        # モデルを正しいデバイスに移動（一度だけ）
+        model = model.to(CONFIG.device)
+        # モデルのデバイスを取得
+        model_device = next(model.parameters()).device
+
+        # translate()メソッドの存在を確認
+        has_translate = hasattr(model, "translate") and callable(getattr(model, "translate", None))
+        if not has_translate:
+            logging.warning(
+                f"モデル {type(model).__name__} には 'translate()' メソッドがありません。"
+                f"'predict()' メソッドを使用してフォールバックします。"
+            )
+
         with torch.no_grad():
             for text in texts:
-                # テキスト正規化
-                normalized_text = normalize_text(text, src_lang)
-
-                # トークン化
+                # トークン化（内部で正規化される）
                 if src_lang == CONFIG.data_config.translation_source:
-                    tokens = tokenize_with_sentencepiece(normalized_text, self.sp_src)
+                    tokens = tokenize_with_sentencepiece(text, self.sp_src, src_lang)
                 else:
-                    tokens = tokenize_with_sentencepiece(normalized_text, self.sp_tgt)
+                    tokens = tokenize_with_sentencepiece(text, self.sp_tgt, src_lang)
 
-                # トークンをテンソルに変換
-                input_tensor = torch.tensor([tokens], dtype=torch.long).to(CONFIG.device)
+                # トークンをテンソルに変換し、モデルのデバイスに移動
+                input_tensor = torch.tensor([tokens], dtype=torch.long).to(model_device)
 
                 # 翻訳
                 try:
-                    output_tensor = model.translate(input_tensor)
+                    if has_translate:
+                        output_tensor = model.translate(input_tensor)
+                    else:
+                        # translate()が存在しない場合はpredict()を使用
+                        output_tensor = model.predict(input_tensor)
 
                     # 出力をトークンIDに変換
                     output_ids = output_tensor[0].cpu().numpy().tolist()
@@ -289,7 +376,8 @@ class DataAugmentor:
         return result
 
     def apply_augmentations(self, token_ids: List[int], techniques: List[str] = None,
-                            probs: Dict[str, float] = None, rng: random.Random = None) -> List[int]:
+                            probs: Dict[str, float] = None, rng: random.Random = None,
+                            use_source_tokenizer: bool = True) -> List[int]:
         """
         指定された拡張手法を組み合わせて適用する
 
@@ -298,6 +386,7 @@ class DataAugmentor:
             techniques: 適用する拡張手法のリスト
             probs: 各手法の適用確率
             rng: ランダム数生成器（Noneの場合はグローバルrandomを使用）
+            use_source_tokenizer: Trueの場合はsp_src、Falseの場合はsp_tgtを使用
 
         Returns:
             拡張されたトークンID列
@@ -320,6 +409,9 @@ class DataAugmentor:
                 "permutation": 0.1
             }
 
+        # 使用するトークナイザーを決定
+        tokenizer = self.sp_src if use_source_tokenizer else self.sp_tgt
+
         augmented_ids = token_ids.copy()
 
         # 拡張処理時のエラーカウント
@@ -329,17 +421,15 @@ class DataAugmentor:
         for technique in techniques:
             try:
                 if technique == "masking":
-                    if rng.random() < probs.get("masking", 0.15):
-                        augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", 0.15), rng=rng)
+                    augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", 0.15), rng=rng,
+                                                      tokenizer=tokenizer)
                 elif technique == "deletion":
-                    if rng.random() < probs.get("deletion", 0.1):
-                        augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", 0.1), rng=rng)
+                    augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", 0.1), rng=rng)
                 elif technique == "replacement":
-                    if rng.random() < probs.get("replacement", 0.1):
-                        augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", 0.1), rng=rng)
+                    augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", 0.1),
+                                                           rng=rng, tokenizer=tokenizer)
                 elif technique == "permutation":
-                    if rng.random() < probs.get("permutation", 0.1):
-                        augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", 0.1), rng=rng)
+                    augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", 0.1), rng=rng)
             except Exception as e:
                 error_count += 1
                 # スタックトレースも含めて詳細なエラー情報を出力
@@ -371,11 +461,14 @@ class DataAugmentor:
         # ペアごとに決定論的なRNGを生成
         if seed is None:
             seed = random.randint(0, 2**31 - 1)
-        pair_rng = random.Random(seed)
+        # 同じシードで2つの独立したRNGを作成して、srcとtgtが同じ決定論的な拡張を受け取るようにする
+        src_rng = random.Random(seed)
+        tgt_rng = random.Random(seed)
 
-        # 同じRNGを使用してsrcとtgtの両方を拡張
-        aug_src_tokens = self.apply_augmentations(src_tokens, techniques, probs, rng=pair_rng)
-        aug_tgt_tokens = self.apply_augmentations(tgt_tokens, techniques, probs, rng=pair_rng)
+        # 独立したRNGを使用してsrcとtgtの両方を拡張
+        # ソースにはsp_src、ターゲットにはsp_tgtを使用
+        aug_src_tokens = self.apply_augmentations(src_tokens, techniques, probs, rng=src_rng, use_source_tokenizer=True)
+        aug_tgt_tokens = self.apply_augmentations(tgt_tokens, techniques, probs, rng=tgt_rng, use_source_tokenizer=False)
 
         return aug_src_tokens, aug_tgt_tokens
 

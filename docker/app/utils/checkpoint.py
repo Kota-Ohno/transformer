@@ -4,6 +4,7 @@
 import os
 import torch
 import logging
+import traceback
 from datetime import datetime
 from utils.config import MODEL_CONFIG
 
@@ -71,14 +72,26 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
 
     # 定期的なチェックポイントを保存
     checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_epoch_{epoch}_{current_date}.pth")
-    torch.save(checkpoint, checkpoint_path)
-    logging.info(f"チェックポイントを保存しました: {checkpoint_path}")
+    try:
+        torch.save(checkpoint, checkpoint_path)
+        logging.info(f"チェックポイントを保存しました: {checkpoint_path}")
+    except Exception as e:
+        logging.error(f"チェックポイントの保存に失敗しました: {checkpoint_path}")
+        logging.error(f"エラー詳細: {e}")
+        logging.error(traceback.format_exc())
+        raise
 
-    # 最良モデルの場合は別名で保存
+    # 最良モデルの場合は別名で保存（同じcheckpointsディレクトリに保存）
     if is_best:
-        best_model_path = os.path.join("models", f"best_model_{current_date}.pth")
-        torch.save(checkpoint, best_model_path)
-        logging.info(f"最良モデルを保存しました: {best_model_path}")
+        best_model_path = os.path.join(checkpoint_dir, f"best_model_{current_date}.pth")
+        try:
+            torch.save(checkpoint, best_model_path)
+            logging.info(f"最良モデルを保存しました: {best_model_path}")
+        except Exception as e:
+            logging.error(f"最良モデルの保存に失敗しました: {best_model_path}")
+            logging.error(f"エラー詳細: {e}")
+            logging.error(traceback.format_exc())
+            raise
 
 def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
     """
@@ -89,7 +102,6 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
         model: モデル
         optimizer: オプティマイザ（オプション）
         scheduler: スケジューラ（オプション）
-        update_globals: グローバル変数を更新するかどうか（デフォルトはFalse、configから読むため）
 
     Returns:
         dict: チェックポイントの情報を含む辞書

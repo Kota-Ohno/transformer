@@ -34,39 +34,66 @@ class Colors:
 
 def setup_logging():
     """ロギングの設定"""
-    log_format = f'{Colors.INFO}%(asctime)s - %(levelname)s - %(message)s{Colors.RESET}'
-    logging.basicConfig(level=logging.INFO, format=log_format)
+    # カスタムフォーマッターでログレベルに応じた色分けを実装
+    class ColoredFormatter(logging.Formatter):
+        LEVEL_COLORS = {
+            logging.DEBUG: Colors.INFO,
+            logging.INFO: Colors.INFO,
+            logging.WARNING: Colors.WARNING,
+            logging.ERROR: Colors.ERROR,
+            logging.CRITICAL: Colors.ERROR,
+        }
 
-    # 標準出力へのハンドラーを追加し、カラーフォーマットを適用
-    console = logging.StreamHandler(sys.stdout)
-    console.setLevel(logging.INFO)
-    formatter = logging.Formatter(log_format)
-    console.setFormatter(formatter)
+        def format(self, record):
+            color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
+            record.levelname = f"{color}{record.levelname}{Colors.RESET}"
+            record.msg = f"{color}{record.msg}{Colors.RESET}"
+            return super().format(record)
 
-    # 既存のハンドラーをクリアして新しいハンドラーを追加
+    # ルートロガーを取得
     root_logger = logging.getLogger()
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-    root_logger.addHandler(console)
+    root_logger.setLevel(logging.INFO)
+
+    # 既存のコンソールハンドラーをチェック（同じタイプとストリームのハンドラーが存在するか）
+    formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    has_console_handler = False
+
+    for handler in root_logger.handlers[:]:  # コピーを作成してイテレート
+        # StreamHandlerでsys.stdoutを使用しているハンドラーを検出
+        if isinstance(handler, logging.StreamHandler):
+            if handler.stream is sys.stdout:
+                # 同じフォーマッタータイプかチェック（ColoredFormatterかどうか）
+                if isinstance(handler.formatter, ColoredFormatter):
+                    has_console_handler = True
+                    break
+                # 既存のStreamHandlerがsys.stdoutを使用している場合は削除（新しいフォーマッターに置き換え）
+                root_logger.removeHandler(handler)
+
+    # 既存のコンソールハンドラーがない場合のみ追加
+    if not has_console_handler:
+        console = logging.StreamHandler(sys.stdout)
+        console.setLevel(logging.INFO)
+        console.setFormatter(formatter)
+        root_logger.addHandler(console)
 
 def check_gpu_environment():
     """GPU環境の情報を収集してログに記録"""
-    logging.info(f"{Colors.INFO}環境チェック中...{Colors.RESET}")
+    logging.info("環境チェック中...")
 
     if torch.cuda.is_available():
         device_count = torch.cuda.device_count()
-        logging.info(f"{Colors.SUCCESS}GPU検出: {device_count}台のGPUが利用可能{Colors.RESET}")
+        logging.info(f"GPU検出: {device_count}台のGPUが利用可能")
 
         for i in range(device_count):
             device_props = torch.cuda.get_device_properties(i)
             total_memory_gb = device_props.total_memory / (1024 ** 3)
-            logging.info(f"{Colors.INFO}GPU {i}: {device_props.name}, メモリ: {total_memory_gb:.2f} GB{Colors.RESET}")
+            logging.info(f"GPU {i}: {device_props.name}, メモリ: {total_memory_gb:.2f} GB")
 
         # PyTorchバージョンチェック
         cuda_version = torch.version.cuda
-        logging.info(f"{Colors.INFO}PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version}{Colors.RESET}")
+        logging.info(f"PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version}")
     else:
-        logging.warning(f"{Colors.WARNING}利用可能なGPUがありません - CPUで実行します{Colors.RESET}")
+        logging.warning("利用可能なGPUがありません - CPUで実行します")
 
 def show_config_summary():
     """設定の概要を表示"""
@@ -129,19 +156,18 @@ def main():
     show_config_summary()
 
     # トレーニングを開始
-    logging.info(f"{Colors.SUCCESS}トレーニングを開始します...{Colors.RESET}")
+    logging.info("トレーニングを開始します...")
 
     # 他の引数を付けてトレーニングメイン関数を呼び出す
-    sys.argv = [sys.argv[0]] + unknown_args
-    train_main()
+    train_main(unknown_args)
 
 if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        logging.info(f"{Colors.WARNING}ユーザーによって中断されました{Colors.RESET}")
+        logging.info("ユーザーによって中断されました")
     except Exception as e:
-        logging.error(f"{Colors.ERROR}エラーが発生しました: {e}{Colors.RESET}")
+        logging.error(f"エラーが発生しました: {e}")
         import traceback
         logging.error(traceback.format_exc())
         sys.exit(1)

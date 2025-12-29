@@ -28,7 +28,7 @@ class TranslationModel(nn.Module):
         # tgt_mask: [batch_size, 1, tgt_len, tgt_len]
         tgt_pad_mask = (tgt != self.tgt_pad_idx).unsqueeze(1).unsqueeze(2)
         tgt_len = tgt.shape[1]
-        tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=CONFIG.device)).bool()
+        tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=tgt.device)).bool()
         tgt_mask = tgt_pad_mask & tgt_sub_mask
         return tgt_mask
 
@@ -55,52 +55,63 @@ class TranslationModel(nn.Module):
         if max_length is None:
             max_length = CONFIG.model_hyperparameters.max_seq_length
 
-        self.eval()
-        device = next(self.parameters()).device
-        batch_size = src.size(0)
+        # 現在のトレーニングモードを保存
+        was_training = self.training
 
-        # エンコーダーでソースをエンコード
-        src_mask = self.make_src_mask(src)
-        enc_src = self.encoder(src, src_mask)
+        try:
+            self.eval()
+            device = next(self.parameters()).device
+            batch_size = src.size(0)
 
-        # デコーダーの初期入力（<s>トークン）
-        tgt = torch.full((batch_size, 1), start_token, dtype=torch.long, device=device)
+            # エンコーダーでソースをエンコード
+            src_mask = self.make_src_mask(src)
+            enc_src = self.encoder(src, src_mask)
 
-        # キャッシュの初期化
-        cache = None
+            # デコーダーの初期入力（<s>トークン）
+            tgt = torch.full((batch_size, 1), start_token, dtype=torch.long, device=device)
 
-        # 生成されたトークンIDを格納
-        output_ids = []
+            # キャッシュの初期化
+            cache = None
 
-        with torch.no_grad():
-            for _ in range(max_length):
-                # 現在のターゲットシーケンスのマスクを作成
-                tgt_len = tgt.size(1)
-                tgt_mask = self.make_tgt_mask(tgt)
+            # 生成されたトークンIDを格納
+            output_ids = []
 
-                # デコーダーで次のトークンを予測
-                decoder_output, cache = self.decoder(tgt, enc_src, tgt_mask, src_mask, cache)
+            with torch.no_grad():
+                for _ in range(max_length):
+                    # 現在のターゲットシーケンスのマスクを作成
+                    tgt_len = tgt.size(1)
+                    tgt_mask = self.make_tgt_mask(tgt)
 
-                # 最後のトークンの予測を取得 [batch_size, vocab_size]
-                next_token_logits = decoder_output[:, -1, :]
+                    # デコーダーで次のトークンを予測
+                    decoder_output, cache = self.decoder(tgt, enc_src, tgt_mask, src_mask, cache)
 
-                # Greedy search: 最も確率の高いトークンを選択
-                next_token = next_token_logits.argmax(dim=-1, keepdim=True)  # [batch_size, 1]
+                    # 最後のトークンの予測を取得 [batch_size, vocab_size]
+                    next_token_logits = decoder_output[:, -1, :]
 
-                # 生成されたトークンを追加
-                output_ids.append(next_token)
+                    # Greedy search: 最も確率の高いトークンを選択
+                    next_token = next_token_logits.argmax(dim=-1, keepdim=True)  # [batch_size, 1]
 
-                # 終了トークンが生成されたかチェック
-                if (next_token == end_token).all():
-                    break
+                    # 生成されたトークンを追加
+                    output_ids.append(next_token)
 
-                # 次のイテレーションのためにターゲットシーケンスに追加
-                tgt = torch.cat([tgt, next_token], dim=1)
+                    # 終了トークンが生成されたかチェック
+                    if (next_token == end_token).all():
+                        break
 
-        # バッチごとにトークンIDを結合 [batch_size, tgt_len]
-        output_ids = torch.cat(output_ids, dim=1)
+                    # 次のイテレーションのためにターゲットシーケンスに追加
+                    tgt = torch.cat([tgt, next_token], dim=1)
 
-        return output_ids
+            # バッチごとにトークンIDを結合 [batch_size, tgt_len]
+            if len(output_ids) == 0:
+                # max_length == 0の場合、空のテンソルを作成
+                output_ids = torch.empty((batch_size, 0), dtype=torch.long, device=device)
+            else:
+                output_ids = torch.cat(output_ids, dim=1)
+
+            return output_ids
+        finally:
+            # 元のトレーニングモードを復元
+            self.train(was_training)
 
 def create_transformer_model(input_vocab_size, output_vocab_size,
                           src_pad_idx=0, tgt_pad_idx=0,
@@ -125,12 +136,12 @@ def create_transformer_model(input_vocab_size, output_vocab_size,
         TranslationModel: 作成したTransformerモデル
     """
     # デフォルト値をCONFIGから取得
-    hidden_size = hidden_size or CONFIG.model_hyperparameters.hidden_size
-    num_heads = num_heads or CONFIG.model_hyperparameters.num_heads
-    num_layers = num_layers or CONFIG.model_hyperparameters.num_layers
-    d_ff = d_ff or CONFIG.model_hyperparameters.d_ff
-    dropout = dropout or CONFIG.model_hyperparameters.dropout_rate
-    max_seq_length = max_seq_length or CONFIG.model_hyperparameters.max_seq_length
+    hidden_size = hidden_size if hidden_size is not None else CONFIG.model_hyperparameters.hidden_size
+    num_heads = num_heads if num_heads is not None else CONFIG.model_hyperparameters.num_heads
+    num_layers = num_layers if num_layers is not None else CONFIG.model_hyperparameters.num_layers
+    d_ff = d_ff if d_ff is not None else CONFIG.model_hyperparameters.d_ff
+    dropout = dropout if dropout is not None else CONFIG.model_hyperparameters.dropout_rate
+    max_seq_length = max_seq_length if max_seq_length is not None else CONFIG.model_hyperparameters.max_seq_length
 
     # エンコーダーの作成
     encoder = Encoder(
@@ -165,9 +176,19 @@ def create_transformer_model(input_vocab_size, output_vocab_size,
     # デバイスに移動
     model = model.to(CONFIG.device)
 
-    # パラメータの初期化 (Transformerでよく使われる方法)
-    for p in model.parameters():
-        if p.dim() > 1:
-            nn.init.xavier_uniform_(p)
+    # パラメータの選択的な初期化
+    for name, param in model.named_parameters():
+        if 'weight' in name:
+            if 'embedding' in name:
+                # 埋め込み層は正規分布で初期化
+                nn.init.normal_(param, mean=0, std=param.shape[1] ** -0.5)
+            elif 'norm' not in name:  # LayerNormは除外（デフォルトの初期化を使用）
+                if param.dim() > 1:
+                    # その他の重みはXavier uniform初期化
+                    nn.init.xavier_uniform_(param)
+        elif 'bias' in name:
+            if 'norm' not in name:  # LayerNormのbiasは除外
+                # バイアスは0で初期化
+                nn.init.zeros_(param)
 
     return model

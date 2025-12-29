@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 
-def main():
+def main(argv=None):
     """
     翻訳モデルのトレーニングを実行する主要な関数。
 
@@ -57,7 +57,19 @@ def main():
                        help='データロードに使用するワーカー数')
     parser.add_argument('--no-nltk-download', action='store_true',
                        help='NLTKリソースのダウンロードをスキップする')
-    args = parser.parse_args()
+    args = parser.parse_args(args=argv)
+
+    # デバイスの設定（GPUメモリチェックのため早期に実行）
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    logging.info(f"Using device: {device}")
+
+    # GPUメモリチェック（fast-mode設定の前に実行）
+    if device.type == 'cuda':
+        gpu_props = torch.cuda.get_device_properties(0)
+        # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
+        if gpu_props.total_memory < 8 * 1024 * 1024 * 1024:  # 8GB未満
+            logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
+            args.fast = True
 
     # 高速トレーニングモードの設定を適用
     if args.fast:
@@ -124,8 +136,8 @@ def main():
         sp_src_path = os.path.join("models", "sp_src.pth")
         sp_tgt_path = os.path.join("models", "sp_tgt.pth")
 
-        sp_src = torch.load(sp_src_path)
-        sp_tgt = torch.load(sp_tgt_path)
+        sp_src = torch.load(sp_src_path, weights_only=True)
+        sp_tgt = torch.load(sp_tgt_path, weights_only=True)
 
         # データ拡張を適用
         train_token_ids = augment_dataset(
@@ -135,22 +147,12 @@ def main():
             augmentation_factor=args.augment_factor
         )
 
-    # デバイスの設定
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    logging.info(f"Using device: {device}")
-
+    # GPU情報のログ記録とメモリキャッシュのクリア
     if device.type == 'cuda':
-        # GPU情報をログに記録
         gpu_props = torch.cuda.get_device_properties(0)
         logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / 1024**2:.0f}MB")
-
         # CUDA確保メモリのキャッシュをクリア
         torch.cuda.empty_cache()
-
-        # メモリ制約がある場合はバッチサイズを自動調整するためのフラグ
-        if gpu_props.total_memory < 8 * 1024 * 1024 * 1024:  # 8GB未満
-            logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
-            args.fast = True
 
     # データセットとデータローダーの作成
     train_dataset = set_data(train_token_ids, train_token_ids)
@@ -269,8 +271,8 @@ def main():
                 logging.info("JITコンパイルのウォームアップ実行...")
                 dummy_batch_size = 2
                 dummy_seq_len = 16
-                dummy_src = torch.randint(0, input_dim-1, (dummy_batch_size, dummy_seq_len), device=device)
-                dummy_tgt = torch.randint(0, output_dim-1, (dummy_batch_size, dummy_seq_len), device=device)
+                dummy_src = torch.randint(0, int(input_dim), (dummy_batch_size, dummy_seq_len), device=device)
+                dummy_tgt = torch.randint(0, int(output_dim), (dummy_batch_size, dummy_seq_len), device=device)
 
                 with torch.no_grad():
                     # ウォームアップ実行

@@ -42,6 +42,61 @@ docker exec -it transformer /bin/sh
 
 ### 3. データの準備とトレーニング
 
+#### トレーニングデータの配置
+
+トレーニングデータは、コンテナ内の `/src` ディレクトリ（プロジェクトの `docker/app` ディレクトリにマウント）に配置してください。
+
+**データ配置パス:**
+- コンテナ内: `/src/` または `/src/data/`
+- ホスト側: `docker/app/` または `docker/app/data/`
+
+**データ形式:**
+
+このプロジェクトは、JSONL形式（JSON Lines）のデータを想定しています。各ファイルは1行に1つの翻訳ペアを含み、以下の形式で記述してください:
+
+```json
+{"japanese": "こんにちは", "english": "Hello"}
+{"japanese": "ありがとう", "english": "Thank you"}
+```
+
+**必須フィールド:**
+- `japanese`: 日本語の文（ソース言語）
+- `english`: 英語の文（ターゲット言語）
+
+**ファイル名の例:**
+- `train.jsonl` - トレーニングデータ
+- `val.jsonl` または `dev.jsonl` - 検証データ
+
+**データの準備方法:**
+
+1. **既存データセットを使用する場合:**
+   - データセットをダウンロードし、上記のJSONL形式に変換してください
+   - ファイルを `docker/app/` または `docker/app/data/` ディレクトリに配置
+
+2. **データをコンテナにコピーする場合:**
+   ```bash
+   # ホスト側から実行
+   docker cp /path/to/your/train.jsonl transformer:/src/train.jsonl
+   docker cp /path/to/your/val.jsonl transformer:/src/val.jsonl
+   ```
+
+3. **ボリュームマウントを使用する場合:**
+   `docker-compose.yml` の `volumes` セクションに以下を追加することで、データディレクトリをマウントできます:
+   ```yaml
+   volumes:
+     - ./app:/src/
+     - ./data:/src/data  # データディレクトリをマウント
+   ```
+
+**ディスク容量の目安:**
+- **サンプルデータセット（開発用）**: 約100MB〜500MB（数千〜数万文対）
+- **中規模データセット**: 約1GB〜5GB（10万〜50万文対）
+- **大規模データセット**: 約10GB以上（100万文対以上）
+
+**注意:** `text_tokenizer.py` を実行すると、元のJSONLファイルからトークナイズ済みデータ（`tokenized_train_data.pth`、`tokenized_val_data.pth`）が生成されます。これらのファイルは元のデータよりも大きくなる場合があります（通常は1.5〜2倍程度）。
+
+#### トレーニングの実行
+
 コンテナ内で以下のコマンドを実行します:
 
 #### 基本的な使用方法

@@ -5,7 +5,6 @@ import numpy as np
 import random
 from tqdm import tqdm
 import os
-import wandb
 import traceback
 from datetime import datetime
 
@@ -34,6 +33,7 @@ class Trainer:
         self.best_valid_loss = float('inf')
         self.best_bleu = 0.0
         self.patience_counter = 0
+        self.wandb_available = False
 
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:
@@ -42,13 +42,42 @@ class Trainer:
     def _setup_wandb(self):
         try:
             import wandb
+
+            # batch_sizeを安全に解決
+            batch_size = getattr(self.train_loader, "batch_size", None)
+
+            if batch_size is None:
+                try:
+                    # 1バッチを取得してbatch_sizeを推論
+                    batch = next(iter(self.train_loader))
+                    if isinstance(batch, (list, tuple)) and len(batch) > 0:
+                        batch_size = len(batch[0])
+                    elif isinstance(batch, torch.Tensor):
+                        batch_size = len(batch)
+                    else:
+                        raise ValueError(f"予期しないバッチ形式: {type(batch)}")
+                except StopIteration:
+                    logging.warning("train_loaderが空です。batch_sizeを推論できません。デフォルト値1を使用します")
+                    batch_size = 1
+                except Exception as e:
+                    logging.warning(f"batch_sizeの推論中にエラーが発生しました: {e}。デフォルト値1を使用します")
+                    batch_size = 1
+
+            # batch_sizeがintであることを確認
+            if not isinstance(batch_size, int):
+                try:
+                    batch_size = int(batch_size)
+                except (ValueError, TypeError):
+                    logging.warning(f"batch_sizeをintに変換できませんでした: {batch_size}。デフォルト値1を使用します")
+                    batch_size = 1
+
             wandb_config = {
                 "hidden_size": CONFIG.model_hyperparameters.hidden_size,
                 "num_heads": CONFIG.model_hyperparameters.num_heads,
                 "num_layers": CONFIG.model_hyperparameters.num_layers,
                 "learning_rate": CONFIG.training_config.learning_rate,
-                "batch_size": self.train_loader.batch_size,
-                "effective_batch_size": self.train_loader.batch_size * CONFIG.training_config.gradient_accumulation_steps,
+                "batch_size": batch_size,
+                "effective_batch_size": batch_size * CONFIG.training_config.gradient_accumulation_steps,
                 "warmup_steps": self.args.warmup_steps,
                 "model_type": "standard",
                 "use_data_augmentation": self.args.augment,
@@ -59,28 +88,36 @@ class Trainer:
             project_name = "transformer_training"
             wandb.init(project=project_name, config=wandb_config)
             model_name = "standard"
-            wandb.run.name = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}_b{self.train_loader.batch_size}"
+            wandb.run.name = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}_b{batch_size}"
             wandb.run.summary["model_architecture"] = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}"
             wandb.run.summary["input_vocab_size"] = len(self.input_vocab)
             wandb.run.summary["output_vocab_size"] = len(self.output_vocab)
+            self.wandb_available = True
             logging.info("Weights & Biasesのログ記録を開始しました")
         except ImportError:
             logging.warning("wandbがインストールされていないため、W&Bのログ記録は無効になります")
             self.args.no_wandb = True
+            self.wandb_available = False
         except Exception as e:
             logging.warning(f"W&Bの初期化エラー: {e}. ログ記録は無効になります")
             self.args.no_wandb = True
+            self.wandb_available = False
 
     def _log_metrics(self, epoch, train_loss, val_loss, bleu_score):
-        if not self.args.no_wandb:
-            metrics = {
-                "epoch": epoch,
-                "train_loss": train_loss,
-                "val_loss": val_loss,
-                "bleu_score": bleu_score,
-                "learning_rate": self.scheduler.get_lr()[0]
-            }
-            wandb.log(metrics)
+        if not self.args.no_wandb and self.wandb_available:
+            try:
+                import wandb
+                metrics = {
+                    "epoch": epoch,
+                    "train_loss": train_loss,
+                    "val_loss": val_loss,
+                    "bleu_score": bleu_score,
+                    "learning_rate": self.scheduler.get_lr()[0] if self.scheduler and hasattr(self.scheduler, 'get_lr') else 0
+                }
+                wandb.log(metrics)
+            except (ImportError, AttributeError):
+                self.wandb_available = False
+                self.args.no_wandb = True
 
     def _epoch_time(self, start_time, end_time):
         elapsed_time = end_time - start_time
@@ -121,13 +158,16 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+                if hasattr(self, "scheduler") and self.scheduler is not None:
+                    self.scheduler.step()
                 self.optimizer.zero_grad(set_to_none=True)
 
             epoch_loss += loss.item() * accumulation_steps
 
+            current_lr = self.scheduler.get_lr()[0] if self.scheduler and hasattr(self.scheduler, 'get_lr') else 0.0
             pbar.set_postfix({
                 "loss": f"{loss.item() * accumulation_steps:.4f}",
-                "lr": f"{self.scheduler.get_lr()[0]:.6f}"
+                "lr": f"{current_lr:.6f}"
             })
 
         return epoch_loss / total_batches
@@ -164,8 +204,12 @@ class Trainer:
             save_checkpoint_frequency = 5
         logging.info(f"チェックポイント保存頻度: {save_checkpoint_frequency}エポックごと")
 
+        last_epoch = start_epoch
+        valid_loss = float('inf')
+        bleu_score = 0.0
         for epoch in range(start_epoch, self.args.epochs):
             try:
+                last_epoch = epoch + 1
                 epoch_start_time = time.time()
 
                 train_loss = self._train_epoch()
@@ -222,14 +266,15 @@ class Trainer:
                     torch.cuda.empty_cache()
 
             except KeyboardInterrupt:
+                last_epoch = epoch + 1
                 logging.info("ユーザーによって中断されました。最終チェックポイントを保存します...")
                 save_checkpoint(
                     model=self.model,
                     optimizer=self.optimizer,
                     scheduler=self.scheduler,
                     epoch=epoch,
-                    val_loss=valid_loss if 'valid_loss' in locals() else float('inf'),
-                    bleu_score=bleu_score if 'bleu_score' in locals() else 0.0,
+                    val_loss=valid_loss,
+                    bleu_score=bleu_score,
                     is_best=False,
                     model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                     model_num_heads=CONFIG.model_hyperparameters.num_heads,
@@ -245,15 +290,18 @@ class Trainer:
         logging.info("トレーニングが完了しました")
         logging.info(f"最良の検証損失: {self.best_valid_loss:.4f}, 最良のBLEUスコア: {self.best_bleu:.4f}")
 
-        if not self.args.no_wandb:
+        if not self.args.no_wandb and self.wandb_available:
             try:
+                import wandb
                 wandb.run.summary["best_val_loss"] = self.best_valid_loss
                 wandb.run.summary["best_bleu_score"] = self.best_bleu
                 wandb.finish()
-            except:
+            except (ImportError, AttributeError):
                 pass
 
-        final_model_path = os.path.join("models", f"final_model_epoch_{self.args.epochs}.pt")
+        final_model_dir = "models"
+        os.makedirs(final_model_dir, exist_ok=True)
+        final_model_path = os.path.join(final_model_dir, f"final_model_epoch_{last_epoch}.pt")
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'input_vocab': self.input_vocab,

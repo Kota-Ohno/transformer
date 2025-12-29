@@ -1,6 +1,7 @@
 """
 学習率のスケジューラを定義します。
 """
+import math
 import torch
 
 class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
@@ -15,12 +16,20 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
         super(WarmupScheduler, self).__init__(optimizer, last_epoch)
 
     def get_lr(self):
-        step = self.last_epoch + 1
+        step = max(self.last_epoch + 1, 1)
         if step < self.warmup_steps:
             lr = (self.d_model ** -0.5) * (step * self.warmup_steps ** -1.5)
+            return [max(self.min_lr, lr) for _ in self.base_lrs]
         else:
-            progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
-            # コサイン減衰を適用
-            lr = self.min_lr + 0.5 * (self.base_lrs[0] - self.min_lr) * (1 + torch.cos(torch.tensor(progress * 3.14159)))
-
-        return [max(self.min_lr, lr) for _ in self.base_lrs]
+            if self.total_steps > self.warmup_steps:
+                progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
+                progress = min(max(progress, 0.0), 1.0)
+            else:
+                progress = 1.0
+            # コサイン減衰を適用（各パラメータグループごとに計算）
+            lrs = []
+            for base_lr in self.base_lrs:
+                cos_value = math.cos(progress * math.pi)
+                lr = self.min_lr + 0.5 * (base_lr - self.min_lr) * (1 + cos_value)
+                lrs.append(max(self.min_lr, lr))
+            return lrs

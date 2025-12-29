@@ -44,9 +44,22 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
     max_length = CONFIG.model_hyperparameters.max_seq_length
 
     # 評価する最大バッチ数（性能向上のため削減）
-    max_batches = len(valid_loader)
+    requested_max = getattr(config.training_config, 'max_eval_batches', None) if hasattr(config, 'training_config') else None
+    if requested_max is not None:
+        max_batches = min(requested_max, len(valid_loader))
+    else:
+        max_batches = len(valid_loader)
 
     logging.info(f"評価開始: {max_batches}バッチを評価、BLEUスコア用に最大{max_bleu_samples}バッチを使用")
+
+    # BLEU計算用の特殊トークンIDを事前に取得
+    pad_id = None
+    eos_id = None
+    if tgt_vocab is not None:
+        if '<pad>' in tgt_vocab:
+            pad_id = tgt_vocab['<pad>']
+        if '<eos>' in tgt_vocab:
+            eos_id = tgt_vocab['<eos>']
 
     try:
         with torch.no_grad():
@@ -97,7 +110,9 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
                         batch_references, batch_hypotheses = decode_for_bleu(
                             output[:max_samples_per_batch],
                             tgt_output[:max_samples_per_batch],
-                            tgt_vocab
+                            tgt_vocab,
+                            pad_id=pad_id,
+                            eos_id=eos_id
                         )
 
                         all_references.extend(batch_references)
@@ -146,7 +161,7 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
 
     return avg_loss, bleu_score
 
-def decode_for_bleu(output, tgt_output, tgt_vocab):
+def decode_for_bleu(output, tgt_output, tgt_vocab, pad_id=None, eos_id=None):
     """
     BLEUスコア計算のためにモデル出力と正解データをデコードする
 
@@ -154,9 +169,14 @@ def decode_for_bleu(output, tgt_output, tgt_vocab):
         output: モデルの出力（ロジット）
         tgt_output: 正解データ（トークンID）
         tgt_vocab: 対象言語の語彙辞書
+        pad_id: パディングトークンのID（オプション、提供されない場合はtgt_vocabから取得）
+        eos_id: 終了トークンのID（オプション、提供されない場合はtgt_vocabから取得）
 
     Returns:
         tuple: (正解文のリスト, 予測文のリスト)
+
+    Raises:
+        ValueError: pad_idまたはeos_idが提供されず、tgt_vocabにも存在しない場合
     """
     # 逆引き辞書（ID→単語）を作成
     id2word = {v: k for k, v in tgt_vocab.items()}
@@ -177,9 +197,22 @@ def decode_for_bleu(output, tgt_output, tgt_vocab):
     pred_tokens_cpu = pred_tokens.detach().cpu().tolist()
     tgt_tokens_cpu = tgt_reshaped.detach().cpu().tolist()
 
-    # 特殊トークンのID
-    pad_id = tgt_vocab.get('<pad>', 0)
-    eos_id = tgt_vocab.get('<eos>', 3)
+    # 特殊トークンのIDを取得
+    if pad_id is None:
+        if '<pad>' not in tgt_vocab:
+            raise ValueError(
+                "pad_idが提供されておらず、tgt_vocabに'<pad>'キーが存在しません。"
+                "pad_idパラメータを明示的に指定するか、tgt_vocabに'<pad>'キーを追加してください。"
+            )
+        pad_id = tgt_vocab['<pad>']
+
+    if eos_id is None:
+        if '<eos>' not in tgt_vocab:
+            raise ValueError(
+                "eos_idが提供されておらず、tgt_vocabに'<eos>'キーが存在しません。"
+                "eos_idパラメータを明示的に指定するか、tgt_vocabに'<eos>'キーを追加してください。"
+            )
+        eos_id = tgt_vocab['<eos>']
 
     # 変換結果格納用リスト
     target_sentences = []
@@ -339,4 +372,4 @@ def calculate_bleu_score(hypotheses, references):
     Returns:
         float: BLEUスコア
     """
-    return calculate_sacrebleu(references, hypotheses)
+    return calculate_sacrebleu(references=references, hypotheses=hypotheses)

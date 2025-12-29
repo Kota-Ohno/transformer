@@ -2,7 +2,7 @@ import torch
 import os
 import json
 from dataclasses import dataclass, field
-from typing import List, Dict, Any
+from typing import List, Any, get_origin
 
 # GPUメモリに基づくモデル設定の自動調整
 class ModelConfig:
@@ -94,14 +94,14 @@ class GlobalConfig:
         self.model_hyperparameters.max_seq_length = adjusted_model_config.max_seq_length
         self.model_hyperparameters.rel_pos_max_distance = adjusted_model_config.rel_pos_max_distance
 
-        # 環境変数からのオーバーライド
+        # config.jsonからのオーバーライド（最初に読み込む）
+        self._load_from_json("config.json")
+
+        # 環境変数からのオーバーライド（最高優先度、ネストされたフィールドも正しくオーバーライド）
         self._override_from_env(self.model_hyperparameters, "TRANSFORMER_MODEL_")
         self._override_from_env(self.training_config, "TRANSFORMER_TRAINING_")
         self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
         self._override_from_env(self, "TRANSFORMER_GLOBAL_")
-
-        # config.jsonからのオーバーライド
-        self._load_from_json("config.json")
 
     def _override_from_env(self, obj: Any, prefix: str):
         for field_name in obj.__dataclass_fields__:
@@ -116,7 +116,7 @@ class GlobalConfig:
                         setattr(obj, field_name, float(env_value))
                     elif original_type is bool:
                         setattr(obj, field_name, env_value.lower() in ("true", "yes", "1"))
-                    elif original_type is List[str]:
+                    elif get_origin(original_type) is list:
                         setattr(obj, field_name, [item.strip() for item in env_value.split(",")])
                     else:
                         setattr(obj, field_name, env_value)
@@ -131,9 +131,10 @@ class GlobalConfig:
                     for section, values in user_config.items():
                         if hasattr(self, section):
                             target_obj = getattr(self, section)
-                            for key, value in values.items():
-                                if hasattr(target_obj, key):
-                                    setattr(target_obj, key, value)
+                            if isinstance(values, dict):
+                                for key, value in values.items():
+                                    if hasattr(target_obj, key):
+                                        setattr(target_obj, key, value)
             except Exception as e:
                 print(f"Warning: Failed to load config from {config_path}: {e}")
 

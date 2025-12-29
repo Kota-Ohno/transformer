@@ -27,9 +27,17 @@ def load_model(input_vocab, output_vocab, model_path=None):
     input_dim = len(input_vocab)
     output_dim = len(output_vocab)
 
-    # パディングインデックスを取得
-    src_pad_idx = input_vocab['<pad>']
-    tgt_pad_idx = output_vocab['<pad>']
+    # パディングインデックスを取得（'<pad>' の存在を明示的にチェック）
+    def get_pad_idx(vocab, vocab_name):
+        pad_idx = vocab.get('<pad>')
+        if pad_idx is None:
+            error_msg = f"語彙 '{vocab_name}' に '<pad>' トークンが存在しません。モデルのパディングインデックスを設定できません。"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+        return pad_idx
+
+    src_pad_idx = get_pad_idx(input_vocab, "input_vocab")
+    tgt_pad_idx = get_pad_idx(output_vocab, "output_vocab")
 
     # モデルパスを決定
     if model_path:
@@ -92,8 +100,7 @@ def load_model(input_vocab, output_vocab, model_path=None):
         else:
             # 従来の形式（モデルの状態辞書が直接保存されている場合）
             model.load_state_dict(checkpoint)
-    except Exception as e:
-        logging.error(f"モデルの読み込みに失敗しました: {e}")
+    except Exception:
         logging.error("モデルのアーキテクチャと保存されたモデルの設定が一致していない可能性があります。")
         raise
 
@@ -101,7 +108,11 @@ def load_model(input_vocab, output_vocab, model_path=None):
     return model
 
 def load_vocab(vocab_path):
-    return torch.load(vocab_path)
+    if not os.path.exists(vocab_path):
+        raise FileNotFoundError(f"語彙ファイルが見つかりません: {vocab_path}")
+    return torch.load(vocab_path, weights_only=True)    if not os.path.exists(vocab_path):
+        raise FileNotFoundError(f"語彙ファイルが見つかりません: {vocab_path}")
+    return torch.load(vocab_path, weights_only=True)
 
 def preprocess_input(sentence, input_vocab):
     """
@@ -129,6 +140,13 @@ def preprocess_input(sentence, input_vocab):
 def handle_unknown_tokens(sentence, input_vocab):
     """未知トークンを<unk>に置き換えて処理する"""
     try:
+        # <unk>トークンの存在をチェック
+        unk_id = input_vocab.get('<unk>')
+        if unk_id is None:
+            error_msg = "入力語彙に '<unk>' トークンが存在しません。未知トークンを処理できません。"
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+
         tokens = tokenize(sentence, CONFIG.data_config.translation_source)
         token_ids = []
         for token in tokens:
@@ -136,11 +154,136 @@ def handle_unknown_tokens(sentence, input_vocab):
                 token_ids.append(input_vocab[token])
             else:
                 logging.warning(f"未知トークン '{token}' を <unk> に置き換えます")
-                token_ids.append(input_vocab['<unk>'])
+                token_ids.append(unk_id)
         return torch.tensor([token_ids], dtype=torch.long)
+    except ValueError:
+        # <unk>が存在しない場合のエラーは再発生
+        raise
     except Exception as e:
         logging.error(f"未知トークン処理中にエラーが発生しました: {e}")
         return None
+
+def _chunked_predict(tensor, _run_predict, is_cuda, initial_chunk_size=512, min_chunk_size=32, max_retries=5):
+    """
+    OOM 時に入力をチャンク分割して推論をリトライする
+
+    Args:
+        tensor: 入力テンソル
+        _run_predict: 単一チャンクで predict を実行する関数
+        is_cuda: CUDA が利用可能かどうか
+        initial_chunk_size: 初期チャンクサイズ
+        min_chunk_size: 最小チャンクサイズ
+        max_retries: 最大リトライ回数
+
+    Returns:
+        推論結果のテンソル
+
+    - チャンクはオーバーラップさせて文脈を多少保持
+    - OOM が出た場合はチャンクサイズを徐々に縮小
+    """
+    seq_len = tensor.size(1)
+    # 入力が十分短い場合はそのまま実行
+    if seq_len <= initial_chunk_size:
+        return _run_predict(tensor)
+
+    chunk_size = max(min(initial_chunk_size, seq_len), min_chunk_size)
+    original_error = None
+    last_error = None
+
+    for attempt in range(1, max_retries + 1):
+        overlap = max(chunk_size // 4, 8) if chunk_size > min_chunk_size else 0
+        logging.info(
+            f"チャンク推論を実行します: attempt={attempt}, chunk_size={chunk_size}, overlap={overlap}, seq_len={seq_len}"
+        )
+
+        if is_cuda:
+            try:
+                torch.cuda.empty_cache()
+            except Exception as ce:
+                logging.warning(f"CUDA キャッシュ解放中にエラーが発生しました: {ce}")
+
+        try:
+            chunks = []
+            start = 0
+            while start < seq_len:
+                end = min(start + chunk_size, seq_len)
+                chunk = tensor[:, start:end]
+                chunks.append(chunk)
+                if end >= seq_len:
+                    break
+                # オーバーラップさせて次の開始位置を決定
+                start = max(end - overlap, 0)
+
+            # 各チャンクを推論して結合
+            chunk_outputs = []
+            for idx, c in enumerate(chunks):
+                logging.debug(f"チャンク {idx+1}/{len(chunks)} を推論中 (len={c.size(1)})")
+                out = _run_predict(c)
+                chunk_outputs.append(out)
+
+            # 出力をマージ（<s>, </s> をある程度意識して結合）
+            if not chunk_outputs:
+                return None
+
+            start_token_id = 2  # TranslationModel.predict のデフォルト
+            end_token_id = 3
+
+            merged_tokens = []
+            num_chunks = len(chunk_outputs)
+
+            for i, out in enumerate(chunk_outputs):
+                # [batch_size, tgt_len] を前提に 1 文バッチで扱う
+                tokens = out[0].tolist()
+
+                if i == 0:
+                    # 最初のチャンク: 終了トークンは最後のチャンク以外では除去
+                    if num_chunks > 1 and tokens and tokens[-1] == end_token_id:
+                        tokens = tokens[:-1]
+                    merged_tokens.extend(tokens)
+                else:
+                    # 2 個目以降: 先頭の開始トークンを削除
+                    while tokens and tokens[0] == start_token_id:
+                        tokens = tokens[1:]
+                    # 最後のチャンク以外では末尾の終了トークンを削除
+                    if i < num_chunks - 1 and tokens and tokens[-1] == end_token_id:
+                        tokens = tokens[:-1]
+                    merged_tokens.extend(tokens)
+
+            if not merged_tokens:
+                return None
+
+            merged_tensor = torch.tensor(merged_tokens, dtype=torch.long, device=tensor.device).unsqueeze(0)
+            return merged_tensor
+
+        except RuntimeError as e:
+            if "out of memory" in str(e).lower():
+                if original_error is None:
+                    original_error = e
+                last_error = e
+                logging.warning(
+                    f"チャンク推論中にメモリ不足が発生しました (attempt={attempt}, chunk_size={chunk_size}): {e}"
+                )
+                # チャンクサイズを縮小してリトライ
+                next_chunk_size = max(chunk_size // 2, min_chunk_size)
+                if next_chunk_size == chunk_size:
+                    logging.error(
+                        "チャンクサイズをこれ以上縮小できません。OOM リトライを中止します。"
+                    )
+                    break
+                chunk_size = next_chunk_size
+                continue
+            else:
+                logging.error(f"チャンク推論中に予期しないエラーが発生しました: {e}")
+                raise
+
+    # ここまで到達した場合、すべてのリトライが失敗
+    logging.error(
+        f"OOM リトライ (max_retries={max_retries}) がすべて失敗しました。"
+        f" original_error={original_error}, last_error={last_error}"
+    )
+    if original_error is not None:
+        raise original_error
+    raise RuntimeError("チャンク推論のリトライがすべて失敗しましたが、詳細な OOM エラーは取得できませんでした。")
 
 def translate(model, input_tensor, max_length=None):
     """
@@ -160,23 +303,44 @@ def translate(model, input_tensor, max_length=None):
         return None
 
     # 入力テンソルをモデルと同じデバイスに移動
-    input_tensor = input_tensor.to(next(model.parameters()).device)
+    device = next(model.parameters()).device
+    input_tensor = input_tensor.to(device)
+
+    # CUDA 利用可否を判定
+    is_cuda = torch.cuda.is_available() and getattr(device, "type", None) == "cuda"
+
+    def _run_predict(tensor):
+        """単一チャンクで predict を実行するヘルパー"""
+        return model.predict(tensor, max_length=max_length)
 
     # 翻訳を実行（勾配計算なし）
     with torch.no_grad():
         try:
-            output_ids = model.predict(input_tensor, max_length=max_length)
+            output_ids = _run_predict(input_tensor)
             return output_ids
         except RuntimeError as e:
             # メモリ不足エラーの場合
             if "out of memory" in str(e).lower():
-                logging.warning("メモリ不足のため、入力を分割して処理します")
-                max_safe_length = 100
-                if input_tensor.size(1) > max_safe_length:
-                    input_tensor = input_tensor[:, :max_safe_length]
-                torch.cuda.empty_cache()
-                output_ids = model.predict(input_tensor, max_length=max_length)
-                return output_ids
+                logging.warning("メモリ不足のため、チャンク推論による再試行を行います")
+                # 初期チャンクサイズは max_seq_length か入力長の小さい方
+                seq_len = input_tensor.size(1)
+                initial_chunk_size = min(
+                    seq_len,
+                    getattr(CONFIG.model_hyperparameters, "max_seq_length", seq_len),
+                )
+                try:
+                    return _chunked_predict(
+                        input_tensor,
+                        _run_predict=_run_predict,
+                        is_cuda=is_cuda,
+                        initial_chunk_size=initial_chunk_size
+                    )
+                except Exception as retry_err:
+                    logging.error(
+                        f"チャンク推論のリトライにも失敗しました。"
+                        f" original_error={e}, retry_error={retry_err}"
+                    )
+                    raise
             else:
                 logging.error(f"翻訳中にエラーが発生しました: {e}")
                 raise
@@ -189,8 +353,23 @@ def main():
     args = parser.parse_args()
 
     # 語彙のロード
-    input_vocab = load_vocab(INPUT_VOCAB_PATH)
-    output_vocab = load_vocab(OUTPUT_VOCAB_PATH)
+    try:
+        input_vocab = load_vocab(INPUT_VOCAB_PATH)
+    except FileNotFoundError as e:
+        logging.error(f"エラー: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"語彙ファイルのロード中にエラーが発生しました: {e}")
+        sys.exit(1)
+
+    try:
+        output_vocab = load_vocab(OUTPUT_VOCAB_PATH)
+    except FileNotFoundError as e:
+        logging.error(f"エラー: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logging.error(f"語彙ファイルのロード中にエラーが発生しました: {e}")
+        sys.exit(1)
 
     try:
         # モデルのロード
@@ -211,24 +390,32 @@ def main():
         if stripped_line.lower() == "exit":
             break
 
-        # 入力処理
+        # 前処理
         input_tensor = preprocess_input(stripped_line, input_vocab)
         if input_tensor is None:
+            logging.warning(f"入力の前処理に失敗しました: {stripped_line}")
             continue
 
         # 翻訳実行
         output_ids = translate(model, input_tensor)
         if output_ids is None:
+            logging.warning(f"翻訳に失敗しました: {stripped_line}")
             continue
+
+        # 出力処理
+        # 特殊トークンのIDを取得
+        start_token_id = output_vocab.get('<s>', None)
+        end_token_id = output_vocab.get('</s>', None)
 
         # 特殊トークンを除去
         output_text = []
         for ids in output_ids:
-            # 最初の<s>と最後の</s>を除去
             token_ids = [t.item() for t in ids]
-            if token_ids[0] == 2:  # <s>
+            # 最初の<s>を除去
+            if start_token_id is not None and token_ids and token_ids[0] == start_token_id:
                 token_ids = token_ids[1:]
-            if token_ids and token_ids[-1] == 3:  # </s>
+            # 最後の</s>を除去
+            if end_token_id is not None and token_ids and token_ids[-1] == end_token_id:
                 token_ids = token_ids[:-1]
 
             # トークンをテキストに変換

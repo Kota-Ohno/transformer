@@ -11,7 +11,9 @@ class PositionalEncoding(nn.Module):
         # 位置エンコーディングの計算
         pe = torch.zeros(max_seq_length, d_model)
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+
+        # sin/cosペアで同じ周波数項を共有する標準的な実装
+        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) * (-math.log(10000.0) / d_model))
 
         # sin と cos を使って位置エンコーディングを作成
         pe[:, 0::2] = torch.sin(position * div_term)
@@ -33,8 +35,13 @@ class PositionalEncoding(nn.Module):
         Returns:
             位置情報が加算されたテンソル [batch_size, seq_len, d_model]
         """
+        seq_len = x.size(1)
+        if seq_len > self.pe.size(1):
+            raise ValueError(
+                f"入力シーケンス長 ({seq_len}) が最大シーケンス長 ({self.pe.size(1)}) を超えています"
+            )
         # 入力シーケンス長に合わせて位置エンコーディングを加算
-        x = x + self.pe[:, :x.size(1)]
+        x = x + self.pe[:, :seq_len]
         return x
 
 class FeedForward(nn.Module):
