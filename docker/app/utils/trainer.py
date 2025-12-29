@@ -152,6 +152,13 @@ class Trainer:
         self.model.train()
         epoch_loss = 0
         total_batches = len(self.train_loader)
+
+        if total_batches == 0:
+            raise ValueError(
+                "train_loaderが空です。データが読み込まれていないか、"
+                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+            )
+
         accumulation_steps = CONFIG.training_config.gradient_accumulation_steps
 
         pbar = tqdm(enumerate(self.train_loader), total=total_batches, desc="Training")
@@ -193,12 +200,6 @@ class Trainer:
                 "loss": f"{loss.item() * accumulation_steps:.4f}",
                 "lr": f"{current_lr:.6f}"
             })
-
-        if total_batches == 0:
-            raise ValueError(
-                "train_loaderが空です。データが読み込まれていないか、"
-                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
-            )
 
         return epoch_loss / total_batches
 

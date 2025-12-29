@@ -23,4 +23,4 @@ tensorboard==2.13.0
 better-exceptions==0.3.3
 
 # Testing
-pytest
+pytest==7.4.2

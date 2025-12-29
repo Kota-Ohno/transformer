@@ -114,6 +114,7 @@ NUMBER_TO_TOPIC = {
     '2': 'train',
     '3': 'predict',
     '4': 'augment',
+    '5': 'all',
 }
 
 # メインヘルプメニューを更新

@@ -4,7 +4,6 @@ from torch.utils.data import DataLoader
 from collections import Counter
 import spacy
 import os
-import sentencepiece as spm
 import re
 import logging
 import traceback
@@ -70,10 +69,14 @@ def flatten_and_convert(sequence: Any) -> List[int]:
     _flatten(sequence)
     return result
 
-def collate_fn(batch: List[Tuple[Any, Any]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     バッチデータをテンソルに変換するための関数
     どんなバッチデータでも安全に処理できるよう設計
+
+    Args:
+        batch: バッチデータのリスト
+        pad_token_id: パディングに使用するトークンID（デフォルト: 0）
     """
     # バッチからXとYのペアを取り出す
     X, Y = zip(*batch)
@@ -101,8 +104,8 @@ def collate_fn(batch: List[Tuple[Any, Any]]) -> Tuple[torch.Tensor, torch.Tensor
     max_length_Y = max([len(y) for y in Y_flat], default=1)
 
     # パディングを適用
-    X_padded = [pad_inner_seq(x, 0, max_length_X) for x in X_flat]
-    Y_padded = [pad_inner_seq(y, 0, max_length_Y) for y in Y_flat]
+    X_padded = [pad_inner_seq(x, pad_token_id, max_length_X) for x in X_flat]
+    Y_padded = [pad_inner_seq(y, pad_token_id, max_length_Y) for y in Y_flat]
 
     try:
         # テンソルに変換
@@ -125,13 +128,14 @@ def collate_fn(batch: List[Tuple[Any, Any]]) -> Tuple[torch.Tensor, torch.Tensor
         raise RuntimeError(f"Failed to process batch in collate_fn: {e}") from e
 
 # データローダーを作成
-def create_data_loader(dataset_or_data: Any, batch_size: int) -> DataLoader:
+def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Optional[int] = None) -> DataLoader:
     """
     データセットまたはトークンIDのリストからデータローダーを作成
 
     Args:
         dataset_or_data: データセットインスタンスまたはトークンIDのリスト
         batch_size: バッチサイズ
+        pad_token_id: パディングに使用するトークンID（Noneの場合はデフォルトの0を使用）
 
     Returns:
         DataLoader: バッチ処理を行うデータローダー
@@ -145,8 +149,14 @@ def create_data_loader(dataset_or_data: Any, batch_size: int) -> DataLoader:
         # すでにデータセットインスタンスの場合はそのまま使用
         dataset = dataset_or_data
 
+    # pad_token_idが指定されている場合はlambdaでラップして渡す
+    if pad_token_id is not None:
+        collate_fn_with_pad = lambda batch: collate_fn(batch, pad_token_id=pad_token_id)
+    else:
+        collate_fn_with_pad = collate_fn
+
     # データローダー作成
-    return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
+    return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_with_pad)
 
 # spacyのモデルを遅延ロード（グローバルロードを削除）
 _nlp_ja = None

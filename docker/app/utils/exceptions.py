@@ -1,7 +1,6 @@
 """
 カスタム例外クラス定義
 """
-from typing import Optional
 
 
 class TransformerError(Exception):

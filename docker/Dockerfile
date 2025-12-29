@@ -12,5 +12,8 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
+# デバイス設定（CUDAが利用できない場合は自動的にCPUにフォールバックされます）
+ENV TRANSFORMER_GLOBAL_DEVICE=cuda
+# 後方互換性のため、TRANSFORMER_DEVICEも設定
 ENV TRANSFORMER_DEVICE=cuda
 

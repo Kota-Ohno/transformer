@@ -6,6 +6,48 @@ import sys
 import copy
 from typing import Optional
 
+# coloramaのインポートを試行（オプショナル）
+try:
+    import colorama
+    COLORAMA_AVAILABLE = True
+except ImportError:
+    COLORAMA_AVAILABLE = False
+    colorama = None
+
+
+# カスタムフォーマッターでログレベルに応じた色分けを実装
+class ColoredFormatter(logging.Formatter):
+    """カラー出力対応のログフォーマッター"""
+    LEVEL_COLORS = {
+        logging.DEBUG: None,  # coloramaが利用可能な場合に設定される
+        logging.INFO: None,
+        logging.WARNING: None,
+        logging.ERROR: None,
+        logging.CRITICAL: None,
+    }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # coloramaが利用可能な場合に色を設定
+        if COLORAMA_AVAILABLE and colorama:
+            self.LEVEL_COLORS = {
+                logging.DEBUG: colorama.Fore.CYAN,
+                logging.INFO: colorama.Fore.CYAN,
+                logging.WARNING: colorama.Fore.YELLOW,
+                logging.ERROR: colorama.Fore.RED,
+                logging.CRITICAL: colorama.Fore.RED,
+            }
+
+    def format(self, record):
+        if COLORAMA_AVAILABLE and colorama:
+            color = self.LEVEL_COLORS.get(record.levelno, colorama.Fore.RESET)
+            record_copy = copy.copy(record)
+            record_copy.levelname = f"{color}{record.levelname}{colorama.Fore.RESET}"
+            record_copy.msg = f"{color}{record.msg}{colorama.Fore.RESET}"
+            return super().format(record_copy)
+        else:
+            return super().format(record)
+
 
 def setup_logging(
     level: int = logging.INFO,
@@ -30,27 +72,8 @@ def setup_logging(
     # 既存のコンソールハンドラーをチェック
     has_console_handler = False
     if use_colored_output:
-        try:
-            import colorama
+        if COLORAMA_AVAILABLE:
             colorama.init()
-
-            # カスタムフォーマッターでログレベルに応じた色分けを実装
-            class ColoredFormatter(logging.Formatter):
-                LEVEL_COLORS = {
-                    logging.DEBUG: colorama.Fore.CYAN,
-                    logging.INFO: colorama.Fore.CYAN,
-                    logging.WARNING: colorama.Fore.YELLOW,
-                    logging.ERROR: colorama.Fore.RED,
-                    logging.CRITICAL: colorama.Fore.RED,
-                }
-
-                def format(self, record):
-                    color = self.LEVEL_COLORS.get(record.levelno, colorama.Fore.RESET)
-                    record_copy = copy.copy(record)
-                    record_copy.levelname = f"{color}{record.levelname}{colorama.Fore.RESET}"
-                    record_copy.msg = f"{color}{record.msg}{colorama.Fore.RESET}"
-                    return super().format(record_copy)
-
             formatter = ColoredFormatter(format_string)
 
             for handler in root_logger.handlers[:]:
@@ -66,7 +89,7 @@ def setup_logging(
                 console.setLevel(level)
                 console.setFormatter(formatter)
                 root_logger.addHandler(console)
-        except ImportError:
+        else:
             # coloramaがインストールされていない場合は通常のフォーマッターを使用
             use_colored_output = False
 

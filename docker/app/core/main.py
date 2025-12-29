@@ -101,12 +101,63 @@ def check_gpu_environment():
 
 def show_config_summary():
     """設定の概要を表示"""
-    print("\n" + "="*50)
-    print(f"{Colors.INFO}モデル設定の概要:{Colors.RESET}")
-    print(f"  • モデルサイズ: hidden_dim={CONFIG.model_hyperparameters.hidden_size}, heads={CONFIG.model_hyperparameters.num_heads}, layers={CONFIG.model_hyperparameters.num_layers}")
-    print(f"  • トレーニング: batch_size={CONFIG.training_config.batch_size}, epochs={CONFIG.training_config.num_epochs}")
-    print(f"  • 最適化: learning_rate={CONFIG.training_config.learning_rate}, dropout={CONFIG.model_hyperparameters.dropout_rate}")
-    print("="*50 + "\n")
+    try:
+        # 安全にCONFIG属性にアクセス（デフォルト値付き）
+        model_hp = getattr(CONFIG, 'model_hyperparameters', None)
+        training_cfg = getattr(CONFIG, 'training_config', None)
+
+        # モデルハイパーパラメータの取得（デフォルト値付き）
+        hidden_size = getattr(model_hp, 'hidden_size', None) if model_hp else None
+        num_heads = getattr(model_hp, 'num_heads', None) if model_hp else None
+        num_layers = getattr(model_hp, 'num_layers', None) if model_hp else None
+        dropout_rate = getattr(model_hp, 'dropout_rate', None) if model_hp else None
+
+        # トレーニング設定の取得（デフォルト値付き）
+        batch_size = getattr(training_cfg, 'batch_size', None) if training_cfg else None
+        num_epochs = getattr(training_cfg, 'num_epochs', None) if training_cfg else None
+        learning_rate = getattr(training_cfg, 'learning_rate', None) if training_cfg else None
+
+        # 欠けている属性をチェック
+        missing_attrs = []
+        if model_hp is None:
+            missing_attrs.append('CONFIG.model_hyperparameters')
+        if training_cfg is None:
+            missing_attrs.append('CONFIG.training_config')
+        if hidden_size is None:
+            missing_attrs.append('CONFIG.model_hyperparameters.hidden_size')
+        if num_heads is None:
+            missing_attrs.append('CONFIG.model_hyperparameters.num_heads')
+        if num_layers is None:
+            missing_attrs.append('CONFIG.model_hyperparameters.num_layers')
+        if dropout_rate is None:
+            missing_attrs.append('CONFIG.model_hyperparameters.dropout_rate')
+        if batch_size is None:
+            missing_attrs.append('CONFIG.training_config.batch_size')
+        if num_epochs is None:
+            missing_attrs.append('CONFIG.training_config.num_epochs')
+        if learning_rate is None:
+            missing_attrs.append('CONFIG.training_config.learning_rate')
+
+        # 欠けている属性がある場合はエラーログを出力して早期リターン
+        if missing_attrs:
+            logging.error(f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}")
+            print(f"\n{Colors.ERROR}警告: 設定情報の一部が取得できませんでした。{Colors.RESET}")
+            print(f"{Colors.ERROR}欠けている属性: {', '.join(missing_attrs)}{Colors.RESET}\n")
+            return
+
+        # 設定の概要を表示
+        print("\n" + "="*50)
+        print(f"{Colors.INFO}モデル設定の概要:{Colors.RESET}")
+        print(f"  • モデルサイズ: hidden_dim={hidden_size}, heads={num_heads}, layers={num_layers}")
+        print(f"  • トレーニング: batch_size={batch_size}, epochs={num_epochs}")
+        print(f"  • 最適化: learning_rate={learning_rate}, dropout={dropout_rate}")
+        print("="*50 + "\n")
+
+    except AttributeError as e:
+        # 予期しないAttributeErrorをキャッチ
+        logging.error(f"CONFIG属性へのアクセス中にエラーが発生しました: {e}")
+        print(f"\n{Colors.ERROR}警告: 設定情報の取得中にエラーが発生しました: {e}{Colors.RESET}\n")
+        return
 
 def main():
     """メイン関数"""
@@ -146,22 +197,6 @@ def main():
 
     # データサンプル数制限の設定
     if args.limit_samples > 0:
-        # 既存の--limit-samplesフラグとその値を削除
-        filtered_args = []
-        i = 0
-        while i < len(unknown_args):
-            if unknown_args[i] == '--limit-samples':
-                i += 1  # フラグをスキップ
-                # 次の要素が値（フラグでない）ならそれもスキップ
-                if i < len(unknown_args) and not unknown_args[i].startswith('--'):
-                    i += 1
-            else:
-                filtered_args.append(unknown_args[i])
-                i += 1
-
-        # 新しいフラグと値を追加
-        filtered_args.extend(['--limit-samples', str(args.limit_samples)])
-        unknown_args[:] = filtered_args
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
 
     # ロギングの設定

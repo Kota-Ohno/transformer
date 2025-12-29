@@ -11,8 +11,8 @@ def test_normalize_text_with_numeric_replacement():
     assert "<NUM>" in result
     assert "123" not in result
     assert "45" not in result
-    assert "apples" in result.lower()
-    assert "oranges" in result.lower()
+    assert "apples" in result
+    assert "oranges" in result
 
 
 def test_normalize_text_with_custom_numeric_token():
@@ -71,4 +71,4 @@ def test_normalize_text_whitespace_normalization():
     result = normalize_text(text, "en_US")
     # 複数の空白が1つに正規化される
     assert "  " not in result
-    assert "Multiple spaces here" in result.lower()
+    assert "multiple spaces here" in result

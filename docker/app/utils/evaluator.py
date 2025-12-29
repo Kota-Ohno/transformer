@@ -197,7 +197,7 @@ def decode_for_bleu(
     tgt_vocab: Dict[str, int],
     pad_id: Optional[int] = None,
     eos_id: Optional[int] = None
-) -> Tuple[List[List[str]], List[List[str]]]:
+) -> Tuple[List[List[List[str]]], List[List[str]]]:
     """
     BLEUスコア計算のためにモデル出力と正解データをデコードする
 
@@ -209,7 +209,7 @@ def decode_for_bleu(
         eos_id: 終了トークンのID（オプション、提供されない場合はtgt_vocabから取得）
 
     Returns:
-        tuple: (正解文のリスト, 予測文のリスト)
+        tuple: (参照文のリスト（List[List[List[str]]]）、予測文のリスト（List[List[str]]）)
 
     Raises:
         ValueError: pad_idまたはeos_idが提供されず、tgt_vocabにも存在しない場合
@@ -251,8 +251,8 @@ def decode_for_bleu(
         eos_id = tgt_vocab['<eos>']
 
     # 変換結果格納用リスト
-    target_sentences = []
-    predicted_sentences = []
+    target_sentences: List[List[List[str]]] = []
+    predicted_sentences: List[List[str]] = []
 
     # 各サンプルについて処理
     for pred, target in zip(pred_tokens_cpu, tgt_tokens_cpu):
@@ -271,8 +271,8 @@ def decode_for_bleu(
 
         # 空でなければリストに追加
         if pred_clean and target_clean:
-            predicted_sentences.append(pred_clean)
-            target_sentences.append([target_clean])  # BLEUの形式に合わせて参照訳をリストのリストに
+            predicted_sentences.append(pred_clean)  # List[List[str]]: 各予測文はトークンのリスト
+            target_sentences.append([target_clean])  # List[List[List[str]]]: BLEUの形式に合わせて参照訳をリストのリストに
 
     return target_sentences, predicted_sentences
 
@@ -400,14 +400,14 @@ def calculate_sacrebleu(
 
 def calculate_bleu_score(
     hypotheses: List[List[str]],
-    references: List[List[str]]
+    references: List[List[List[str]]]
 ) -> float:
     """
     BLEUスコアを計算する関数（SacreBLEUを使用）
 
     Args:
-        hypotheses: 予測文のリスト（トークンのリスト）
-        references: 参照文のリスト（BLEUの形式に合わせたリストのリスト）
+        hypotheses: 予測文のリスト（List[List[str]]: 各予測文はトークンのリスト）
+        references: 参照文のリスト（List[List[List[str]]]: BLEUの形式に合わせたリストのリスト）
 
     Returns:
         float: BLEUスコア

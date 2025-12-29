@@ -38,9 +38,8 @@ class EncoderLayer(nn.Module):
             mask = mask.unsqueeze(1)
 
         # 自己アテンション（残差接続とレイヤー正規化）
-        attn_output = self.self_attn(
-            self.norm1(x), self.norm1(x), self.norm1(x), mask
-        )
+        normed = self.norm1(x)
+        attn_output = self.self_attn(normed, normed, normed, mask)
         x = x + self.dropout1(attn_output)
 
         # フィードフォワード（残差接続とレイヤー正規化）

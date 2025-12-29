@@ -101,22 +101,33 @@ def save_checkpoint(
         temp_best_model_path = os.path.join(checkpoint_dir, "best_model.pth.tmp")
 
         try:
-            # 古いbest_model_*.pthファイルを削除
-            old_best_models = glob.glob(os.path.join(checkpoint_dir, "best_model_*.pth"))
-            for old_file in old_best_models:
-                try:
-                    os.remove(old_file)
-                    logging.info(f"古い最良モデルファイルを削除しました: {old_file}")
-                except Exception as e:
-                    logging.warning(f"古い最良モデルファイルの削除に失敗しました: {old_file}, エラー: {e}")
-
             # 一時ファイルに保存（アトミックな保存）
             torch.save(checkpoint, temp_best_model_path)
 
             # 一時ファイルを正式なファイル名にリネーム（アトミック操作）
             os.replace(temp_best_model_path, best_model_path)
 
+            # リネームが成功したことを確認
+            if not os.path.exists(best_model_path):
+                raise RuntimeError(f"アトミック保存後のファイル確認に失敗しました: {best_model_path}")
+
             logging.info(f"最良モデルを保存しました: {best_model_path}")
+
+            # アトミック保存が成功した後、古いbest_model_*.pthファイルを削除
+            try:
+                old_best_models = glob.glob(os.path.join(checkpoint_dir, "best_model_*.pth"))
+                for old_file in old_best_models:
+                    # 新しく書き込んだファイルはスキップ
+                    if os.path.abspath(old_file) == os.path.abspath(best_model_path):
+                        continue
+                    try:
+                        os.remove(old_file)
+                        logging.info(f"古い最良モデルファイルを削除しました: {old_file}")
+                    except Exception as e:
+                        logging.warning(f"古い最良モデルファイルの削除に失敗しました: {old_file}, エラー: {e}")
+            except Exception as cleanup_error:
+                logging.warning(f"古い最良モデルファイルの列挙・削除処理中にエラーが発生しました: {cleanup_error}")
+
         except Exception as e:
             # 一時ファイルが残っている場合は削除を試みる
             if os.path.exists(temp_best_model_path):

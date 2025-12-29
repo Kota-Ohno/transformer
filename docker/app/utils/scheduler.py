@@ -9,6 +9,18 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     ウォームアップ付きの学習率スケジューラ
     """
     def __init__(self, optimizer, d_model, warmup_steps, total_steps, min_lr=1e-6, last_epoch=-1):
+        # Input validation
+        if warmup_steps <= 0:
+            raise ValueError(f"warmup_steps must be greater than 0, got {warmup_steps}")
+        if total_steps <= 0:
+            raise ValueError(f"total_steps must be greater than 0, got {total_steps}")
+        if d_model <= 0:
+            raise ValueError(f"d_model must be greater than 0, got {d_model}")
+        if min_lr < 0:
+            raise ValueError(f"min_lr must be non-negative, got {min_lr}")
+        if last_epoch < -1 or last_epoch >= total_steps:
+            raise ValueError(f"last_epoch must be in range [-1, {total_steps-1}], got {last_epoch}")
+
         self.d_model = d_model
         self.warmup_steps = warmup_steps
         self.total_steps = total_steps

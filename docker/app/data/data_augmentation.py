@@ -35,7 +35,14 @@ class DataAugmentor:
         if self.translation_model is not None:
             self.translation_model = self.translation_model.to(CONFIG.device)
             self.translation_model.eval()
-            self._model_device = next(self.translation_model.parameters()).device
+            # パラメータからデバイスを取得、パラメータがない場合はフォールバック
+            first_param = next(self.translation_model.parameters(), None)
+            if first_param is not None:
+                self._model_device = first_param.device
+            elif hasattr(self.translation_model, 'device'):
+                self._model_device = self.translation_model.device
+            else:
+                self._model_device = torch.device('cpu')
         else:
             self._model_device = None
 
@@ -270,7 +277,7 @@ class DataAugmentor:
 
         return result
 
-    def back_translation(self, src_texts: List[str], src_lang: str, tgt_lang: str, batch_size: int = DEFAULT_BATCH_SIZE_SMALL_VRAM * 4) -> List[str]:
+    def back_translation(self, src_texts: List[str], src_lang: str, tgt_lang: str, batch_size: int = DEFAULT_BATCH_SIZE_SMALL_VRAM) -> List[str]:
         """
         逆翻訳によるデータ拡張
 
@@ -278,7 +285,9 @@ class DataAugmentor:
             src_texts: 元の言語テキストのリスト
             src_lang: 元の言語コード
             tgt_lang: 翻訳先言語コード
-            batch_size: バッチサイズ
+            batch_size: バッチサイズ（デフォルト: DEFAULT_BATCH_SIZE_SMALL_VRAM）
+                       メモリ安全のため、デフォルトは保守的な値に設定されています。
+                       より大きなバッチサイズが必要な場合は明示的に指定してください。
 
         Returns:
             拡張されたテキストのリスト
@@ -507,7 +516,7 @@ class DataAugmentor:
 
     def apply_pair_augmentations(self, src_tokens: List[int], tgt_tokens: List[int],
                                   techniques: List[str] = None, probs: Dict[str, float] = None,
-                                  seed: int = None) -> Tuple[List[int], List[int]]:
+                                  seed: int = None, parent_rng: random.Random = None) -> Tuple[List[int], List[int]]:
         """
         ソースとターゲットのペアに対して同期された拡張を適用する
 
@@ -516,14 +525,21 @@ class DataAugmentor:
             tgt_tokens: ターゲット言語のトークンID列
             techniques: 適用する拡張手法のリスト
             probs: 各手法の適用確率
-            seed: ランダムシード（Noneの場合はランダムに生成）
+            seed: ランダムシード（Noneの場合は親RNGまたはローカルRNGから生成）
+            parent_rng: 親ランダム数生成器（seedがNoneの場合に使用、再現性を保つため）
 
         Returns:
             拡張された(src_tokens, tgt_tokens)のタプル
         """
         # ペアごとに決定論的なRNGを生成
         if seed is None:
-            seed = random.randint(0, 2**31 - 1)
+            if parent_rng is not None:
+                # 親RNGからシードを生成（再現性を保つため）
+                seed = parent_rng.randint(0, 2**31 - 1)
+            else:
+                # ローカルのRandomインスタンスを作成してシードを生成（グローバルrandomを避ける）
+                local_rng = random.Random()
+                seed = local_rng.randint(0, 2**31 - 1)
         # 同じシードで2つの独立したRNGを作成して、srcとtgtが同じ決定論的な拡張を受け取るようにする
         src_rng = random.Random(seed)
         tgt_rng = random.Random(seed)

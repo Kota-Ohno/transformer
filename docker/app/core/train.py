@@ -192,7 +192,8 @@ def _create_data_loaders(
     train_token_ids: List,
     val_token_ids: List,
     args: argparse.Namespace,
-    device: torch.device
+    device: torch.device,
+    output_vocab: Any = None
 ) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int]:
     """
     データローダーを作成します。
@@ -202,6 +203,7 @@ def _create_data_loaders(
         val_token_ids: 検証データのトークンIDリスト
         args: コマンドライン引数オブジェクト
         device: 使用するデバイス
+        output_vocab: 出力側のvocabulary（パディングトークンIDを取得するために使用）
 
     Returns:
         (train_loader, val_loader, adjusted_batch_size)のタプル
@@ -235,6 +237,15 @@ def _create_data_loaders(
     if CONFIG.training_config.gradient_accumulation_steps > 1:
         logging.info(f"勾配蓄積ステップ数: {CONFIG.training_config.gradient_accumulation_steps}, 実効バッチサイズ: {effective_batch_size}")
 
+    # パディングトークンIDを取得
+    if output_vocab is not None:
+        pad_token_id = output_vocab['<pad>']
+    else:
+        pad_token_id = 0  # デフォルト値（後方互換性のため）
+
+    # collate_fnをラップしてpad_token_idを渡す
+    collate_fn_with_pad = lambda batch: collate_fn(batch, pad_token_id=pad_token_id)
+
     # 高速モードの場合はデータローダーのオプションを最適化
     if args.fast:
         num_workers = 0
@@ -249,7 +260,7 @@ def _create_data_loaders(
         train_dataset,
         batch_size=adjusted_batch_size,
         shuffle=True,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_with_pad,
         num_workers=num_workers,
         pin_memory=pin_memory,
         prefetch_factor=DEFAULT_PREFETCH_FACTOR if num_workers > 0 else None,
@@ -260,7 +271,7 @@ def _create_data_loaders(
         val_dataset,
         batch_size=adjusted_batch_size,
         shuffle=False,
-        collate_fn=collate_fn,
+        collate_fn=collate_fn_with_pad,
         num_workers=num_workers,
         pin_memory=pin_memory
     )
@@ -451,7 +462,7 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # データローダーの作成
     train_loader, val_loader, adjusted_batch_size = _create_data_loaders(
-        train_token_ids, val_token_ids, args, device
+        train_token_ids, val_token_ids, args, device, output_vocab
     )
 
     # モデルの初期化

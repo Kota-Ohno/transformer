@@ -47,6 +47,7 @@ class ModelConfig:
             - 4GB以上8GB未満: hidden=384, heads=6, layers=4
             - 4GB未満: hidden=256, heads=4, layers=3
             - GPUなし: hidden=512, heads=8, layers=6 (デフォルト)
+        """
         if not torch.cuda.is_available():
             # GPUがない場合はデフォルト設定
             return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
@@ -69,7 +70,6 @@ class ModelConfig:
             return cls(hidden_size=384, num_heads=6, num_layers=4, d_ff=1536, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
         else:
             # 4GB未満: 3レイヤー (hidden=256, heads=4)
-            return cls(hidden_size=256, num_heads=4, num_layers=3, d_ff=1024, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
             return cls(hidden_size=256, num_heads=4, num_layers=3, d_ff=1024, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
 @dataclass
@@ -162,6 +162,14 @@ class GlobalConfig:
         self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
         self._override_from_env(self, "TRANSFORMER_GLOBAL_")
 
+        # TRANSFORMER_DEVICE環境変数もサポート（後方互換性のため）
+        device_env = os.getenv("TRANSFORMER_DEVICE")
+        if device_env is not None:
+            self.device = device_env.lower()
+
+        # デバイスの検証とフォールバック処理
+        self._validate_and_fallback_device()
+
     def _get_expected_type(self, obj: Any, key: str):
         """
         属性の期待される型を取得します。
@@ -240,9 +248,12 @@ class GlobalConfig:
         # 基本型への変換を試みる
         try:
             if expected_type is int:
-                # 文字列の数字からintへの変換
-                if isinstance(value, str) and value.strip().isdigit():
-                    return int(value), True
+                # 文字列の数字からintへの変換（符号付き整数をサポート）
+                if isinstance(value, str):
+                    try:
+                        return int(value.strip()), True
+                    except ValueError:
+                        raise ValueError(f"Cannot convert string '{value}' to int")
                 elif isinstance(value, (int, float)):
                     return int(value), True
                 else:
@@ -381,6 +392,48 @@ class GlobalConfig:
                                         # 失敗時は既に警告がログに出力されている
             except Exception as e:
                 logging.warning(f"Failed to load config from {config_path}: {e}")
+
+    def _validate_and_fallback_device(self):
+        """
+        デバイス設定を検証し、CUDAが利用できない場合はCPUにフォールバックします。
+
+        環境変数で'cuda'が指定されていても、実際にCUDAが利用できない場合は
+        警告を出して'cpu'にフォールバックします。
+        """
+        if self.device.lower() == 'cuda':
+            if not torch.cuda.is_available():
+                logging.warning(
+                    "環境変数でCUDAが指定されましたが、CUDAが利用できません。"
+                    "CPUにフォールバックします。"
+                )
+                self.device = 'cpu'
+            else:
+                # CUDAが利用可能な場合でも、実際にデバイスにアクセスできるか確認
+                try:
+                    # デバイス0にアクセスして確認
+                    _ = torch.cuda.get_device_properties(0)
+                    logging.info(f"CUDAデバイスが利用可能です: {torch.cuda.get_device_name(0)}")
+                except (RuntimeError, AssertionError) as e:
+                    logging.warning(
+                        f"CUDAデバイスへのアクセスに失敗しました: {e}。"
+                        "CPUにフォールバックします。"
+                    )
+                    self.device = 'cpu'
+        elif self.device.lower() not in ('cpu', 'cuda'):
+            logging.warning(
+                f"無効なデバイス設定 '{self.device}' が指定されました。"
+                "有効な値は 'cpu' または 'cuda' です。CPUにフォールバックします。"
+            )
+            self.device = 'cpu'
+
+    def get_device(self) -> torch.device:
+        """
+        デバイス設定をtorch.deviceオブジェクトとして取得します。
+
+        Returns:
+            torch.device: 使用するデバイス
+        """
+        return torch.device(self.device)
 
 # グローバル設定インスタンス
 CONFIG = GlobalConfig()
