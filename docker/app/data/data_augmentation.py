@@ -6,10 +6,17 @@ import logging
 from typing import List, Tuple, Dict
 
 from utils.config import CONFIG
+from utils.constants import (
+    DEFAULT_MASK_PROB, DEFAULT_DELETION_PROB, DEFAULT_REPLACEMENT_PROB,
+    DEFAULT_PERMUTATION_PROB, DEFAULT_WINDOW_SIZE, DEFAULT_MIN_SEQUENCE_LENGTH,
+    MAX_DATA_AUGMENTATION_ERRORS, DEFAULT_BATCH_SIZE_SMALL_VRAM
+)
+from utils.logging_config import setup_logging
 from data.tokenizer_utils import normalize_text, tokenize_with_sentencepiece
 from data.tokenizer_utils import train_and_load_sp_models
+
 # ロギング設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+setup_logging()
 
 class DataAugmentor:
     """データ拡張を行うクラス"""
@@ -32,7 +39,7 @@ class DataAugmentor:
         else:
             self._model_device = None
 
-    def token_masking(self, token_ids: List[int], mask_prob: float = 0.15, rng: random.Random = None,
+    def token_masking(self, token_ids: List[int], mask_prob: float = DEFAULT_MASK_PROB, rng: random.Random = None,
                       tokenizer=None) -> List[int]:
         """
         トークンの一部をマスクする拡張手法
@@ -87,7 +94,7 @@ class DataAugmentor:
 
         return result
 
-    def token_deletion(self, token_ids: List[int], del_prob: float = 0.1, rng: random.Random = None) -> List[int]:
+    def token_deletion(self, token_ids: List[int], del_prob: float = DEFAULT_DELETION_PROB, rng: random.Random = None) -> List[int]:
         """
         トークンの一部を削除する拡張手法
 
@@ -115,7 +122,7 @@ class DataAugmentor:
                 logging.warning(f"token_ids内に整数でない要素があります: {token}")
                 continue
 
-        if len(valid_tokens) <= 3:  # 短すぎる場合は削除しない
+        if len(valid_tokens) <= DEFAULT_MIN_SEQUENCE_LENGTH:
             return valid_tokens
 
         result = []
@@ -127,7 +134,7 @@ class DataAugmentor:
 
         return result if result else valid_tokens  # 空になった場合は元に戻す
 
-    def token_replacement(self, token_ids: List[int], replace_prob: float = 0.1, rng: random.Random = None,
+    def token_replacement(self, token_ids: List[int], replace_prob: float = DEFAULT_REPLACEMENT_PROB, rng: random.Random = None,
                           tokenizer=None) -> List[int]:
         """
         トークンの一部をランダムに置換する拡張手法
@@ -220,7 +227,7 @@ class DataAugmentor:
 
         return result
 
-    def token_permutation(self, token_ids: List[int], window_size: int = 3, perm_prob: float = 0.1, rng: random.Random = None) -> List[int]:
+    def token_permutation(self, token_ids: List[int], window_size: int = DEFAULT_WINDOW_SIZE, perm_prob: float = DEFAULT_PERMUTATION_PROB, rng: random.Random = None) -> List[int]:
         """
         トークンの順序を局所的に入れ替える拡張手法
 
@@ -263,7 +270,7 @@ class DataAugmentor:
 
         return result
 
-    def back_translation(self, src_texts: List[str], src_lang: str, tgt_lang: str, batch_size: int = 32) -> List[str]:
+    def back_translation(self, src_texts: List[str], src_lang: str, tgt_lang: str, batch_size: int = DEFAULT_BATCH_SIZE_SMALL_VRAM * 4) -> List[str]:
         """
         逆翻訳によるデータ拡張
 
@@ -457,10 +464,10 @@ class DataAugmentor:
 
         if probs is None:
             probs = {
-                "masking": 0.15,
-                "deletion": 0.1,
-                "replacement": 0.1,
-                "permutation": 0.1
+                "masking": DEFAULT_MASK_PROB,
+                "deletion": DEFAULT_DELETION_PROB,
+                "replacement": DEFAULT_REPLACEMENT_PROB,
+                "permutation": DEFAULT_PERMUTATION_PROB
             }
 
         # 使用するトークナイザーを決定
@@ -470,28 +477,27 @@ class DataAugmentor:
 
         # 拡張処理時のエラーカウント
         error_count = 0
-        max_errors = 3  # 許容する最大エラー数
 
         for technique in techniques:
             try:
                 if technique == "masking":
-                    augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", 0.15), rng=rng,
+                    augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", DEFAULT_MASK_PROB), rng=rng,
                                                       tokenizer=tokenizer)
                 elif technique == "deletion":
-                    augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", 0.1), rng=rng)
+                    augmented_ids = self.token_deletion(augmented_ids, del_prob=probs.get("deletion", DEFAULT_DELETION_PROB), rng=rng)
                 elif technique == "replacement":
-                    augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", 0.1),
+                    augmented_ids = self.token_replacement(augmented_ids, replace_prob=probs.get("replacement", DEFAULT_REPLACEMENT_PROB),
                                                            rng=rng, tokenizer=tokenizer)
                 elif technique == "permutation":
-                    augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", 0.1), rng=rng)
+                    augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", DEFAULT_PERMUTATION_PROB), rng=rng)
             except Exception as e:
                 error_count += 1
                 # スタックトレースも含めて詳細なエラー情報を出力
                 logging.error(f"{technique}拡張適用中にエラーが発生しました: {e}", exc_info=True)
 
                 # エラーが多すぎる場合は警告
-                if error_count > max_errors:
-                    logging.warning(f"エラーが{max_errors}回以上発生しました。データ拡張プロセスに問題がある可能性があります。")
+                if error_count > MAX_DATA_AUGMENTATION_ERRORS:
+                    logging.warning(f"エラーが{MAX_DATA_AUGMENTATION_ERRORS}回以上発生しました。データ拡張プロセスに問題がある可能性があります。")
                     break
 
         return augmented_ids

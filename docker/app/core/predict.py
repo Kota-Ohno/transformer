@@ -4,13 +4,18 @@ import os
 import glob
 import logging
 import argparse
-from typing import Dict, Optional
+from typing import Dict, Optional, Any, Callable
 from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from data.data import tokenize, tokens_to_ids, ids_to_tokens
 from models.model import create_transformer_model, TranslationModel
+from utils.constants import (
+    DEFAULT_INITIAL_CHUNK_SIZE, DEFAULT_MIN_CHUNK_SIZE, DEFAULT_MAX_RETRIES,
+    DEFAULT_START_TOKEN_ID, DEFAULT_END_TOKEN_ID
+)
+from utils.logging_config import setup_logging
 
 # ロギング設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+setup_logging()
 
 def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_path: Optional[str] = None) -> TranslationModel:
     """
@@ -162,7 +167,16 @@ def handle_unknown_tokens(sentence: str, input_vocab: Dict[str, int]) -> Optiona
         logging.error(f"未知トークン処理中にエラーが発生しました: {e}")
         return None
 
-def _chunked_predict(tensor, _run_predict, is_cuda, start_token_id, end_token_id, initial_chunk_size=512, min_chunk_size=32, max_retries=5):
+def _chunked_predict(
+    tensor: torch.Tensor,
+    _run_predict: Any,
+    is_cuda: bool,
+    start_token_id: int,
+    end_token_id: int,
+    initial_chunk_size: int = DEFAULT_INITIAL_CHUNK_SIZE,
+    min_chunk_size: int = DEFAULT_MIN_CHUNK_SIZE,
+    max_retries: int = DEFAULT_MAX_RETRIES
+) -> Optional[torch.Tensor]:
     """
     OOM 時に入力をチャンク分割して推論をリトライする
 
@@ -306,11 +320,11 @@ def translate(model: TranslationModel, input_tensor: torch.Tensor, output_vocab:
     end_token_id = output_vocab.get('</s>')
 
     if start_token_id is None:
-        logging.warning("出力語彙に '<s>' トークンが見つかりません。デフォルト値2を使用します。")
-        start_token_id = 2
+        logging.warning(f"出力語彙に '<s>' トークンが見つかりません。デフォルト値{DEFAULT_START_TOKEN_ID}を使用します。")
+        start_token_id = DEFAULT_START_TOKEN_ID
     if end_token_id is None:
-        logging.warning("出力語彙に '</s>' トークンが見つかりません。デフォルト値3を使用します。")
-        end_token_id = 3
+        logging.warning(f"出力語彙に '</s>' トークンが見つかりません。デフォルト値{DEFAULT_END_TOKEN_ID}を使用します。")
+        end_token_id = DEFAULT_END_TOKEN_ID
 
     # 入力テンソルをモデルと同じデバイスに移動
     device = next(model.parameters()).device

@@ -6,9 +6,27 @@ import logging
 import time
 import traceback
 import sacrebleu
+from typing import Optional, Dict, List, Tuple, Any
 from nltk.translate.bleu_score import SmoothingFunction
+from utils.config import CONFIG
+from utils.constants import (
+    LOG_INTERVAL_BATCHES, DEFAULT_MAX_SAMPLES_PER_BATCH,
+    DEFAULT_BLEU_SAMPLE_BATCHES, DEFAULT_MAX_BLEU_SAMPLES,
+    BLEU_SCORE_NORMALIZATION_FACTOR
+)
+from utils.logging_config import setup_logging
 
-def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
+# ロギング設定
+setup_logging()
+
+def evaluate(
+    model: torch.nn.Module,
+    valid_loader: torch.utils.data.DataLoader,
+    criterion: torch.nn.Module,
+    device: torch.device,
+    config: Any,
+    tgt_vocab: Optional[Dict[str, int]] = None
+) -> Tuple[float, float]:
     """
     モデルを評価する関数（性能最適化版）
 
@@ -32,7 +50,8 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
     all_hypotheses = []
 
     # BLEUスコア計算用の最小サンプル数
-    max_bleu_samples = min(getattr(config, 'bleu_sample_batches', 10) if hasattr(config, 'bleu_sample_batches') else 10, len(valid_loader))
+    bleu_sample_batches = getattr(config, 'bleu_sample_batches', DEFAULT_BLEU_SAMPLE_BATCHES) if hasattr(config, 'bleu_sample_batches') else DEFAULT_BLEU_SAMPLE_BATCHES
+    max_bleu_samples = min(bleu_sample_batches, len(valid_loader))
     bleu_sample_count = 0
 
     # 性能計測用変数
@@ -51,7 +70,7 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
             "config.model_hyperparameters.max_seq_lengthが存在しません。"
             "デフォルト値512を使用します。"
         )
-        max_length = 512
+        max_length = CONFIG.model_hyperparameters.max_seq_length if hasattr(CONFIG, 'model_hyperparameters') else 512
     else:
         max_length = config.model_hyperparameters.max_seq_length
 
@@ -113,10 +132,10 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
                 total_loss += loss.item()
 
                 # BLEU計算用サンプル収集（最初のいくつかのバッチのみ、かつ効率化）
-                if batch_idx < max_bleu_samples and tgt_vocab is not None and bleu_sample_count < 50:  # サンプル数を減らして高速化
+                if batch_idx < max_bleu_samples and tgt_vocab is not None and bleu_sample_count < DEFAULT_MAX_BLEU_SAMPLES:
                     try:
                         # 少数のサンプルだけをデコード（バッチの最初の数個のみ）
-                        max_samples_per_batch = min(src.size(0), 5)  # バッチから最大5サンプルのみ使用
+                        max_samples_per_batch = min(src.size(0), DEFAULT_MAX_SAMPLES_PER_BATCH)
 
                         # BLEUスコア計算のためのデコード（バッチの一部のみ）
                         batch_references, batch_hypotheses = decode_for_bleu(
@@ -131,7 +150,7 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
                         all_hypotheses.extend(batch_hypotheses)
                         bleu_sample_count += len(batch_references)
 
-                        if bleu_sample_count >= 50:  # サンプル数を減らして高速化
+                        if bleu_sample_count >= DEFAULT_MAX_BLEU_SAMPLES:
                             logging.info(f"BLEUスコア計算用に十分なサンプル({bleu_sample_count}個)を収集しました")
                     except Exception as e:
                         logging.error(f"BLEUデコードエラー: {e}")
@@ -140,8 +159,8 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
                 batch_time = time.time() - batch_start_time
                 total_batch_time += batch_time
 
-                # ログ出力（100バッチごと）- ログ記録頻度を減らして高速化
-                if (batch_idx + 1) % 100 == 0 or batch_idx == max_batches - 1:
+                # ログ出力（定期的）- ログ記録頻度を減らして高速化
+                if (batch_idx + 1) % LOG_INTERVAL_BATCHES == 0 or batch_idx == max_batches - 1:
                     avg_batch_time = total_batch_time / (batch_idx + 1)
                     avg_inference_time = total_inference_time / (batch_idx + 1)
                     logging.info(f"評価進捗: [{batch_idx+1}/{max_batches}], "
@@ -173,7 +192,13 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
 
     return avg_loss, bleu_score
 
-def decode_for_bleu(output, tgt_output, tgt_vocab, pad_id=None, eos_id=None):
+def decode_for_bleu(
+    output: torch.Tensor,
+    tgt_output: torch.Tensor,
+    tgt_vocab: Dict[str, int],
+    pad_id: Optional[int] = None,
+    eos_id: Optional[int] = None
+) -> Tuple[List[List[str]], List[List[str]]]:
     """
     BLEUスコア計算のためにモデル出力と正解データをデコードする
 
@@ -252,7 +277,10 @@ def decode_for_bleu(output, tgt_output, tgt_vocab, pad_id=None, eos_id=None):
 
     return target_sentences, predicted_sentences
 
-def calculate_sacrebleu(references, hypotheses):
+def calculate_sacrebleu(
+    references: List[List[str]],
+    hypotheses: List[List[str]]
+) -> float:
     """
     SacreBLEUを使用して翻訳品質を評価します。
     SacreBLEUはBLEUのより標準化されたバージョンです。
@@ -364,14 +392,17 @@ def calculate_sacrebleu(references, hypotheses):
         )
 
         # スコアを0-1の範囲に正規化
-        return bleu.score / 100.0
+        return bleu.score / BLEU_SCORE_NORMALIZATION_FACTOR
     except Exception as e:
         logging.error(f"SacreBLEU計算でエラーが発生: {e}")
         logging.error(f"仮説例: {valid_hyps[:1] if valid_hyps else []}")
         logging.error(f"参照例: {valid_refs[:1] if valid_refs else []}")
         return 0.0
 
-def calculate_bleu_score(hypotheses, references):
+def calculate_bleu_score(
+    hypotheses: List[List[str]],
+    references: List[List[str]]
+) -> float:
     """
     BLEUスコアを計算する関数（SacreBLEUを使用）
 

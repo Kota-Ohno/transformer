@@ -5,7 +5,7 @@ import os
 import argparse
 import logging
 import sys
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict, Any
 from packaging import version
 from data.data import create_data_loader, set_data, collate_fn
 from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
@@ -14,26 +14,30 @@ from data.text_tokenizer import load_tokenized_data
 from data.data_augmentation import augment_dataset
 from utils.trainer import Trainer
 from utils.utils import download_nltk_resources
+from utils.constants import (
+    VRAM_THRESHOLD_4GB, VRAM_THRESHOLD_8GB,
+    DEFAULT_BATCH_SIZE_SMALL_VRAM, DEFAULT_BATCH_SIZE_MEDIUM_VRAM,
+    FAST_MODE_MAX_EPOCHS, FAST_MODE_DEFAULT_SAMPLES,
+    FAST_MODE_MAX_EVAL_BATCHES, FAST_MODE_BLEU_SAMPLE_BATCHES,
+    FAST_MODE_MIN_GRAD_ACCUM_STEPS,
+    DEFAULT_PREFETCH_FACTOR, DEFAULT_NUM_WORKERS, MAX_NUM_WORKERS_CUDA,
+    BYTES_PER_MB, BYTES_PER_GB
+)
+from utils.logging_config import setup_logging
 
 # Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+setup_logging()
 
 
-
-def main(argv: Optional[List[str]] = None) -> None:
+def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """
-    翻訳モデルのトレーニングを実行する主要な関数。
+    コマンドライン引数を解析します。
 
-    この関数は以下の手順を実行します：
-    1. データの読み込みと前処理
-    2. モデル、損失関数、オプティマイザの初期化
-    3. トレーニングループの実行
-    4. 検証と早期停止の処理
-    5. モデルの保存
+    Args:
+        argv: コマンドライン引数のリスト（Noneの場合はsys.argvを使用）
 
-    Raises:
-        ValueError: データの読み込みに失敗した場合
-        Exception: その他の予期せぬエラーが発生した場合
+    Returns:
+        解析された引数オブジェクト
     """
     parser = argparse.ArgumentParser(description='Transformerモデルのトレーニング')
     parser.add_argument('--resume', action='store_true', help='最新のチェックポイントから再開')
@@ -53,13 +57,23 @@ def main(argv: Optional[List[str]] = None) -> None:
     parser.add_argument('--verbose-mask', action='store_true', help='マスクの詳細ログを表示')
     parser.add_argument('--limit-samples', type=int, default=0, help='使用するサンプル数を制限')
     parser.add_argument('--jit', action='store_true', help='JITコンパイルを使用')
-    parser.add_argument('--num-workers', type=int, default=4,
+    parser.add_argument('--num-workers', type=int, default=DEFAULT_NUM_WORKERS,
                        help='データロードに使用するワーカー数')
     parser.add_argument('--no-nltk-download', action='store_true',
                        help='NLTKリソースのダウンロードをスキップする')
-    args = parser.parse_args(args=argv)
+    return parser.parse_args(args=argv)
 
-    # デバイスの設定（GPUメモリチェックのため早期に実行）
+
+def _check_and_setup_gpu(args: argparse.Namespace) -> torch.device:
+    """
+    GPU環境をチェックし、必要に応じて高速モードを自動有効化します。
+
+    Args:
+        args: コマンドライン引数オブジェクト
+
+    Returns:
+        使用するデバイス
+    """
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     logging.info(f"Using device: {device}")
 
@@ -67,45 +81,52 @@ def main(argv: Optional[List[str]] = None) -> None:
     if device.type == 'cuda':
         gpu_props = torch.cuda.get_device_properties(0)
         # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
-        if gpu_props.total_memory < 8 * 1024 * 1024 * 1024:  # 8GB未満
+        if gpu_props.total_memory < VRAM_THRESHOLD_8GB * BYTES_PER_MB:
             logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
             args.fast = True
 
-    # 高速トレーニングモードの設定を適用
+    return device
+
+
+def _apply_fast_mode_settings(args: argparse.Namespace) -> None:
+    """
+    高速トレーニングモードの設定を適用します。
+
+    Args:
+        args: コマンドライン引数オブジェクト
+    """
     if args.fast:
         logging.info("高速トレーニングモードが有効です - 精度よりも速度を優先します")
         # データサンプル数の制限
         if args.limit_samples == 0:
-            args.limit_samples = 10000  # デフォルトで1万サンプルに制限
+            args.limit_samples = FAST_MODE_DEFAULT_SAMPLES
         # エポック数の制限
-        if args.epochs > 5:
-            args.epochs = 5
+        if args.epochs > FAST_MODE_MAX_EPOCHS:
+            args.epochs = FAST_MODE_MAX_EPOCHS
         # 評価頻度の削減
-        CONFIG.training_config.max_eval_batches = 50
+        CONFIG.training_config.max_eval_batches = FAST_MODE_MAX_EVAL_BATCHES
         # 勾配蓄積ステップ数の増加
-        args.grad_accum_steps = max(args.grad_accum_steps, 4)
+        args.grad_accum_steps = max(args.grad_accum_steps, FAST_MODE_MIN_GRAD_ACCUM_STEPS)
         # BLEUスコア計算用サンプル数の削減
-        CONFIG.training_config.bleu_sample_batches = 1
+        CONFIG.training_config.bleu_sample_batches = FAST_MODE_BLEU_SAMPLE_BATCHES
 
-    # NLTKリソースダウンロードのスキップ設定
-    if args.no_nltk_download:
-        os.environ['SKIP_NLTK_DOWNLOAD'] = '1'
-        logging.info("NLTKリソースのダウンロードをスキップします")
 
-    # Dockerコンテナ内で実行されているかを確認して対応する
-    docker_detected = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER') == 'true'
-    if docker_detected:
-        logging.info("Dockerコンテナ内での実行を検出しました")
+def _load_and_prepare_data(
+    args: argparse.Namespace
+) -> Tuple[List, List, Dict[str, int], Dict[str, int]]:
+    """
+    データを読み込み、前処理を実行します。
 
-    # マスクログの設定を更新
-    CONFIG.verbose_mask_logs = args.verbose_mask
+    Args:
+        args: コマンドライン引数オブジェクト
 
-    # 勾配蓄積ステップ数を更新
-    CONFIG.training_config.gradient_accumulation_steps = args.grad_accum_steps
+    Returns:
+        (train_token_ids, val_token_ids, input_vocab, output_vocab)のタプル
 
-    # JITコンパイル設定を更新
-    CONFIG.training_config.use_jit_compile = args.jit
-
+    Raises:
+        SystemExit: データファイルが見つからない場合
+        RuntimeError: SentencePieceモデルファイルが見つからない場合
+    """
     # NLTK リソースのダウンロード
     download_nltk_resources()
 
@@ -164,28 +185,48 @@ def main(argv: Optional[List[str]] = None) -> None:
             augmentation_factor=args.augment_factor
         )
 
+    return train_token_ids, val_token_ids, input_vocab, output_vocab
+
+
+def _create_data_loaders(
+    train_token_ids: List,
+    val_token_ids: List,
+    args: argparse.Namespace,
+    device: torch.device
+) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int]:
+    """
+    データローダーを作成します。
+
+    Args:
+        train_token_ids: トレーニングデータのトークンIDリスト
+        val_token_ids: 検証データのトークンIDリスト
+        args: コマンドライン引数オブジェクト
+        device: 使用するデバイス
+
+    Returns:
+        (train_loader, val_loader, adjusted_batch_size)のタプル
+    """
     # GPU情報のログ記録とメモリキャッシュのクリア
     if device.type == 'cuda':
         gpu_props = torch.cuda.get_device_properties(0)
-        logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / 1024**2:.0f}MB")
-        # CUDA確保メモリのキャッシュをクリア
+        logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / BYTES_PER_MB:.0f}MB")
         torch.cuda.empty_cache()
 
     # データセットとデータローダーの作成
     train_dataset = set_data(train_token_ids, train_token_ids)
     val_dataset = set_data(val_token_ids, val_token_ids)
 
-    # バッチサイズの調整（オプション）
+    # バッチサイズの調整
     batch_size = args.batch_size
     adjusted_batch_size = batch_size
 
     # 実際のバッチサイズはGPUメモリによって調整可能
     if device.type == 'cuda':
-        vram_mb = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
-        if vram_mb < 4000:  # 4GB未満
-            adjusted_batch_size = min(batch_size, 8)
-        elif vram_mb < 8000:  # 8GB未満
-            adjusted_batch_size = min(batch_size, 16)
+        vram_mb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_MB
+        if vram_mb < VRAM_THRESHOLD_4GB:
+            adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_SMALL_VRAM)
+        elif vram_mb < VRAM_THRESHOLD_8GB:
+            adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_MEDIUM_VRAM)
 
     logging.info(f"バッチサイズ: {adjusted_batch_size} (元の設定: {batch_size})")
 
@@ -196,13 +237,11 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # 高速モードの場合はデータローダーのオプションを最適化
     if args.fast:
-        # ワーカー数を削減し、メモリ使用を最適化
         num_workers = 0
         pin_memory = False
         persistent_workers = False
     else:
-        # 通常モード
-        num_workers = args.num_workers if not torch.cuda.is_available() else min(args.num_workers, 2)
+        num_workers = args.num_workers if not torch.cuda.is_available() else min(args.num_workers, MAX_NUM_WORKERS_CUDA)
         pin_memory = torch.cuda.is_available()
         persistent_workers = num_workers > 0
 
@@ -213,7 +252,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         collate_fn=collate_fn,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        prefetch_factor=2 if num_workers > 0 else None,
+        prefetch_factor=DEFAULT_PREFETCH_FACTOR if num_workers > 0 else None,
         persistent_workers=persistent_workers
     )
 
@@ -226,11 +265,28 @@ def main(argv: Optional[List[str]] = None) -> None:
         pin_memory=pin_memory
     )
 
-    # 入力と出力の次元を設定
+    return train_loader, val_loader, adjusted_batch_size
+
+
+def _initialize_model(
+    input_vocab: Dict[str, int],
+    output_vocab: Dict[str, int],
+    device: torch.device
+) -> nn.Module:
+    """
+    モデルを初期化します。
+
+    Args:
+        input_vocab: 入力語彙
+        output_vocab: 出力語彙
+        device: 使用するデバイス
+
+    Returns:
+        初期化されたモデル
+    """
     input_dim = len(input_vocab)
     output_dim = len(output_vocab)
 
-    # ボキャブラリーサイズをログに記録
     logging.info(f"入力ボキャブラリーサイズ: {input_dim}, 出力ボキャブラリーサイズ: {output_dim}")
 
     # パディングインデックスを取得
@@ -242,7 +298,6 @@ def main(argv: Optional[List[str]] = None) -> None:
     model_num_heads = CONFIG.model_hyperparameters.num_heads
     model_num_layers = CONFIG.model_hyperparameters.num_layers
 
-    # モデルのタイプとサイズをログに記録
     logging.info(f"モデルタイプ: 標準Transformer")
     logging.info(f"モデル設定: hidden_size={model_hidden_size}, heads={model_num_heads}, layers={model_num_layers}")
 
@@ -266,24 +321,20 @@ def main(argv: Optional[List[str]] = None) -> None:
         try:
             logging.info("PyTorch JITコンパイルを適用します")
             import torch._dynamo as dynamo
-            # エラー抑制と最適化レベル設定
             torch._dynamo.config.suppress_errors = True
-            torch._dynamo.config.cache_size_limit = 64  # キャッシュサイズを増やす
+            torch._dynamo.config.cache_size_limit = 64
 
-            # デバッグモードの場合は生成されたコードを保存
             if CONFIG.training_config.debug_mode:
                 dynamo.config.debug = True
                 dynamo.config.output_code = True
 
-            # Inductor バックエンドを使用（最速の選択肢）
             optimized_model = torch.compile(
                 model,
                 backend="inductor",
                 mode="max-autotune",
-                fullgraph=False  # 部分コンパイルを許可（失敗時に通常実行にフォールバック）
+                fullgraph=False
             )
 
-            # 最適化モデルを試す小さなバッチを実行
             try:
                 logging.info("JITコンパイルのウォームアップ実行...")
                 dummy_batch_size = 2
@@ -292,17 +343,37 @@ def main(argv: Optional[List[str]] = None) -> None:
                 dummy_tgt = torch.randint(0, int(output_dim), (dummy_batch_size, dummy_seq_len), device=device)
 
                 with torch.no_grad():
-                    # ウォームアップ実行
                     optimized_model(dummy_src, dummy_tgt[:, :-1])
                     torch.cuda.synchronize()
 
-                # 成功したら置き換え
                 model = optimized_model
                 logging.info("JITコンパイルのウォームアップ完了")
             except Exception as warmup_err:
                 logging.warning(f"JITコンパイルのウォームアップに失敗しました: {warmup_err}。通常のモデルを使用します。")
         except Exception as e:
             logging.warning(f"JITコンパイルの適用に失敗しました: {e}")
+
+    return model
+
+
+def _setup_training_components(
+    model: nn.Module,
+    args: argparse.Namespace,
+    train_loader: torch.utils.data.DataLoader
+) -> Tuple[optim.Optimizer, nn.Module, WarmupScheduler, torch.cuda.amp.GradScaler]:
+    """
+    トレーニングに必要なコンポーネントを設定します。
+
+    Args:
+        model: モデル
+        args: コマンドライン引数オブジェクト
+        train_loader: トレーニングデータローダー
+
+    Returns:
+        (optimizer, criterion, scheduler, scaler)のタプル
+    """
+    # パディングインデックスを取得（モデルから取得）
+    tgt_pad_idx = model.tgt_pad_idx if hasattr(model, 'tgt_pad_idx') else 0
 
     # 損失関数とオプティマイザの設定
     criterion = nn.CrossEntropyLoss(ignore_index=tgt_pad_idx)
@@ -320,6 +391,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     total_steps = len(train_loader) * args.epochs // CONFIG.training_config.gradient_accumulation_steps
 
     # 学習率スケジューラの設定
+    model_hidden_size = CONFIG.model_hyperparameters.hidden_size
     scheduler = WarmupScheduler(
         optimizer,
         d_model=model_hidden_size,
@@ -327,6 +399,62 @@ def main(argv: Optional[List[str]] = None) -> None:
         total_steps=total_steps,
         min_lr=1e-6
     )
+
+    return optimizer, criterion, scheduler, scaler
+
+
+def main(argv: Optional[List[str]] = None) -> None:
+    """
+    翻訳モデルのトレーニングを実行する主要な関数。
+
+    この関数は以下の手順を実行します：
+    1. 引数の解析
+    2. GPU環境のチェックと設定
+    3. データの読み込みと前処理
+    4. データローダーの作成
+    5. モデルの初期化
+    6. トレーニングコンポーネントの設定
+    7. トレーニングループの実行
+
+    Raises:
+        ValueError: データの読み込みに失敗した場合
+        RuntimeError: SentencePieceモデルファイルが見つからない場合
+    """
+    # 引数の解析
+    args = _parse_args(argv)
+
+    # GPU環境のチェックと設定
+    device = _check_and_setup_gpu(args)
+
+    # 高速モード設定の適用
+    _apply_fast_mode_settings(args)
+
+    # 設定の更新
+    if args.no_nltk_download:
+        os.environ['SKIP_NLTK_DOWNLOAD'] = '1'
+        logging.info("NLTKリソースのダウンロードをスキップします")
+
+    docker_detected = os.path.exists('/.dockerenv') or os.environ.get('DOCKER_CONTAINER') == 'true'
+    if docker_detected:
+        logging.info("Dockerコンテナ内での実行を検出しました")
+
+    CONFIG.verbose_mask_logs = args.verbose_mask
+    CONFIG.training_config.gradient_accumulation_steps = args.grad_accum_steps
+    CONFIG.training_config.use_jit_compile = args.jit
+
+    # データの読み込みと前処理
+    train_token_ids, val_token_ids, input_vocab, output_vocab = _load_and_prepare_data(args)
+
+    # データローダーの作成
+    train_loader, val_loader, adjusted_batch_size = _create_data_loaders(
+        train_token_ids, val_token_ids, args, device
+    )
+
+    # モデルの初期化
+    model = _initialize_model(input_vocab, output_vocab, device)
+
+    # トレーニングコンポーネントの設定
+    optimizer, criterion, scheduler, scaler = _setup_training_components(model, args, train_loader)
 
     # Trainerクラスのインスタンスを作成し、トレーニングを開始
     trainer = Trainer(

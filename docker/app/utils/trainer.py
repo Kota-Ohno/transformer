@@ -8,13 +8,19 @@ import os
 import traceback
 from datetime import datetime
 
+from typing import Optional, Dict, Any, Tuple
 from utils.config import CONFIG
 from utils.evaluator import evaluate
 from utils.checkpoint import save_checkpoint, load_checkpoint, find_latest_checkpoint, setup_checkpointing_directory
 from utils.scheduler import WarmupScheduler
+from utils.constants import (
+    CHECKPOINT_FREQUENCY_SHORT, CHECKPOINT_FREQUENCY_MEDIUM, CHECKPOINT_FREQUENCY_LONG,
+    MAX_EPOCH_RETRIES
+)
+from utils.logging_config import setup_logging
 
 # ロギング設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+setup_logging()
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, optimizer, criterion, scheduler, scaler, device, args, input_vocab, output_vocab):
@@ -34,7 +40,7 @@ class Trainer:
         self.best_bleu = 0.0
         self.patience_counter = 0
         self.wandb_available = False
-        self.max_epoch_retries = 3  # エポックあたりの最大リトライ回数
+        self.max_epoch_retries = MAX_EPOCH_RETRIES
 
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:
@@ -190,9 +196,13 @@ class Trainer:
 
         return epoch_loss / total_batches
 
-    def train_model(self):
-        setup_checkpointing_directory()
+    def _load_checkpoint_if_needed(self) -> int:
+        """
+        必要に応じてチェックポイントを読み込みます。
 
+        Returns:
+            開始エポック番号
+        """
         start_epoch = 0
         checkpoint_path = None
 
@@ -212,20 +222,96 @@ class Trainer:
             except Exception as e:
                 logging.error(f"チェックポイントからの復元に失敗しました: {e}")
 
+        return start_epoch
+
+    def _determine_checkpoint_frequency(self) -> int:
+        """
+        チェックポイント保存頻度を決定します。
+
+        Returns:
+            チェックポイント保存頻度（エポック数）
+        """
+        if self.args.epochs <= 5:
+            return CHECKPOINT_FREQUENCY_SHORT
+        elif self.args.epochs <= 20:
+            return CHECKPOINT_FREQUENCY_MEDIUM
+        else:
+            return CHECKPOINT_FREQUENCY_LONG
+
+    def _process_epoch(self, epoch: int) -> Tuple[float, float]:
+        """
+        1エポックの処理を実行します。
+
+        Args:
+            epoch: エポック番号
+
+        Returns:
+            (valid_loss, bleu_score)のタプル
+        """
+        epoch_start_time = time.time()
+        train_loss = self._train_epoch()
+        valid_loss, bleu_score = evaluate(
+            self.model, self.val_loader, self.criterion, self.device,
+            CONFIG.training_config, self.output_vocab
+        )
+        epoch_minutes, epoch_seconds = self._epoch_time(epoch_start_time, time.time())
+
+        logging.info(f"エポック: {epoch+1:02} | 所要時間: {epoch_minutes}m {epoch_seconds}s")
+        logging.info(f"トレーニング損失: {train_loss:.4f} | 検証損失: {valid_loss:.4f} | BLEUスコア: {bleu_score:.4f}")
+
+        self._log_metrics(epoch+1, train_loss, valid_loss, bleu_score)
+
+        return valid_loss, bleu_score
+
+    def _should_save_checkpoint(
+        self,
+        epoch: int,
+        is_best: bool,
+        save_checkpoint_frequency: int
+    ) -> bool:
+        """
+        チェックポイントを保存すべきかどうかを判定します。
+
+        Args:
+            epoch: エポック番号
+            is_best: 最良モデルかどうか
+            save_checkpoint_frequency: チェックポイント保存頻度
+
+        Returns:
+            保存すべきかどうか
+        """
+        return (
+            is_best or
+            epoch == self.args.epochs - 1 or
+            (epoch + 1) % save_checkpoint_frequency == 0
+        )
+
+    def _check_early_stopping(self) -> bool:
+        """
+        早期停止すべきかどうかをチェックします。
+
+        Returns:
+            早期停止すべきかどうか
+        """
+        if self.patience_counter >= CONFIG.training_config.patience:
+            logging.info(f"{CONFIG.training_config.patience}エポックの間改善が見られないため、トレーニングを早期停止します")
+            return True
+        return False
+
+    def train_model(self):
+        """
+        トレーニングループを実行します。
+        """
+        setup_checkpointing_directory()
+
+        start_epoch = self._load_checkpoint_if_needed()
         logging.info(f"エポック {start_epoch + 1}/{self.args.epochs} からトレーニングを開始します...")
 
-        if self.args.epochs <= 5:
-            save_checkpoint_frequency = 1
-        elif self.args.epochs <= 20:
-            save_checkpoint_frequency = 2
-        else:
-            save_checkpoint_frequency = 5
+        save_checkpoint_frequency = self._determine_checkpoint_frequency()
         logging.info(f"チェックポイント保存頻度: {save_checkpoint_frequency}エポックごと")
 
-        last_epoch = start_epoch
-        valid_loss = float('inf')
-        bleu_score = 0.0
         should_stop_training = False
+        last_epoch = start_epoch
 
         for epoch in range(start_epoch, self.args.epochs):
             if should_stop_training:
@@ -238,18 +324,9 @@ class Trainer:
             while retry_attempt <= self.max_epoch_retries and not epoch_completed:
                 try:
                     last_epoch = epoch + 1
-                    epoch_start_time = time.time()
+                    valid_loss, bleu_score = self._process_epoch(epoch)
 
-                    train_loss = self._train_epoch()
-                    valid_loss, bleu_score = evaluate(self.model, self.val_loader, self.criterion, self.device, CONFIG.training_config, self.output_vocab)
-
-                    epoch_minutes, epoch_seconds = self._epoch_time(epoch_start_time, time.time())
-
-                    logging.info(f"エポック: {epoch+1:02} | 所要時間: {epoch_minutes}m {epoch_seconds}s")
-                    logging.info(f"トレーニング損失: {train_loss:.4f} | 検証損失: {valid_loss:.4f} | BLEUスコア: {bleu_score:.4f}")
-
-                    self._log_metrics(epoch+1, train_loss, valid_loss, bleu_score)
-
+                    # 最良モデルの更新
                     is_best = False
                     if valid_loss < self.best_valid_loss:
                         self.best_valid_loss = valid_loss
@@ -264,13 +341,8 @@ class Trainer:
                         self.best_bleu = bleu_score
                         logging.info(f"最良のBLEUスコアを更新: {self.best_bleu:.4f}")
 
-                    should_save_checkpoint = (
-                        is_best or
-                        epoch == self.args.epochs - 1 or
-                        (epoch + 1) % save_checkpoint_frequency == 0
-                    )
-
-                    if should_save_checkpoint:
+                    # チェックポイント保存
+                    if self._should_save_checkpoint(epoch, is_best, save_checkpoint_frequency):
                         save_checkpoint(
                             model=self.model,
                             optimizer=self.optimizer,
@@ -286,8 +358,8 @@ class Trainer:
                     else:
                         logging.info(f"チェックポイント保存をスキップしました (頻度: {save_checkpoint_frequency}エポックごと)")
 
-                    if self.patience_counter >= CONFIG.training_config.patience:
-                        logging.info(f"{CONFIG.training_config.patience}エポックの間改善が見られないため、トレーニングを早期停止します")
+                    # 早期停止チェック
+                    if self._check_early_stopping():
                         epoch_completed = True
                         should_stop_training = True
                         break
