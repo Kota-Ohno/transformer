@@ -122,8 +122,8 @@ def save_checkpoint(
             if os.path.exists(temp_best_model_path):
                 try:
                     os.remove(temp_best_model_path)
-                except:
-                    pass
+                except Exception as cleanup_error:
+                    logging.warning(f"一時ファイルの削除に失敗しました: {temp_best_model_path}, エラー: {cleanup_error}")
             logging.error(f"最良モデルの保存に失敗しました: {best_model_path}")
             logging.error(f"エラー詳細: {e}")
             logging.error(traceback.format_exc())

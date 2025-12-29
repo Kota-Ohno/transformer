@@ -65,14 +65,13 @@ def evaluate(
             "configにmodel_hyperparameters属性が存在しません。"
             "設定が正しく初期化されているか確認してください。"
         )
-    if not hasattr(config.model_hyperparameters, 'max_seq_length'):
+    model_hyperparameters = getattr(config, 'model_hyperparameters', None)
+    max_length = getattr(model_hyperparameters, 'max_seq_length', 512) if model_hyperparameters else 512
+    if not hasattr(model_hyperparameters, 'max_seq_length'):
         logging.warning(
             "config.model_hyperparameters.max_seq_lengthが存在しません。"
             "デフォルト値512を使用します。"
         )
-        max_length = CONFIG.model_hyperparameters.max_seq_length if hasattr(CONFIG, 'model_hyperparameters') else 512
-    else:
-        max_length = config.model_hyperparameters.max_seq_length
 
     # 評価する最大バッチ数（性能向上のため削減）
     requested_max = getattr(config.training_config, 'max_eval_batches', None) if hasattr(config, 'training_config') else None

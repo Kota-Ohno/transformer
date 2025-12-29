@@ -9,6 +9,7 @@ import re
 import logging
 import traceback
 import weakref
+import threading
 from typing import List, Tuple, Optional, Callable, Any, Dict
 
 # データセットクラス
@@ -150,45 +151,55 @@ def create_data_loader(dataset_or_data: Any, batch_size: int) -> DataLoader:
 # spacyのモデルを遅延ロード（グローバルロードを削除）
 _nlp_ja = None
 _nlp_en = None
+_nlp_ja_lock = threading.Lock()
+_nlp_en_lock = threading.Lock()
 
 def get_nlp_ja() -> Optional[Any]:
     """
-    日本語spacyモデルを遅延ロードするアクセサ関数
+    日本語spacyモデルを遅延ロードするアクセサ関数（スレッドセーフ）
     モデルが存在しない場合はNoneを返し、エラーをログに記録
     """
     global _nlp_ja
+    # ダブルチェックロッキングパターンを使用
     if _nlp_ja is None:
-        try:
-            _nlp_ja = spacy.load("ja_core_news_md")
-            logging.info("Successfully loaded Japanese spacy model: ja_core_news_md")
-        except OSError as e:
-            logging.error(f"Failed to load Japanese spacy model 'ja_core_news_md': {e}")
-            logging.error("Please install the model with: python -m spacy download ja_core_news_md")
-            _nlp_ja = None
-        except Exception as e:
-            logging.error(f"Unexpected error loading Japanese spacy model: {e}")
-            logging.error(f"Traceback:\n{traceback.format_exc()}")
-            _nlp_ja = None
+        with _nlp_ja_lock:
+            # ロック取得後に再度チェック（他のスレッドが既にロードした可能性があるため）
+            if _nlp_ja is None:
+                try:
+                    _nlp_ja = spacy.load("ja_core_news_md")
+                    logging.info("Successfully loaded Japanese spacy model: ja_core_news_md")
+                except OSError as e:
+                    logging.error(f"Failed to load Japanese spacy model 'ja_core_news_md': {e}")
+                    logging.error("Please install the model with: python -m spacy download ja_core_news_md")
+                    _nlp_ja = None
+                except Exception as e:
+                    logging.error(f"Unexpected error loading Japanese spacy model: {e}")
+                    logging.error(f"Traceback:\n{traceback.format_exc()}")
+                    _nlp_ja = None
     return _nlp_ja
 
 def get_nlp_en() -> Optional[Any]:
     """
-    英語spacyモデルを遅延ロードするアクセサ関数
+    英語spacyモデルを遅延ロードするアクセサ関数（スレッドセーフ）
     モデルが存在しない場合はNoneを返し、エラーをログに記録
     """
     global _nlp_en
+    # ダブルチェックロッキングパターンを使用
     if _nlp_en is None:
-        try:
-            _nlp_en = spacy.load("en_core_web_md")
-            logging.info("Successfully loaded English spacy model: en_core_web_md")
-        except OSError as e:
-            logging.error(f"Failed to load English spacy model 'en_core_web_md': {e}")
-            logging.error("Please install the model with: python -m spacy download en_core_web_md")
-            _nlp_en = None
-        except Exception as e:
-            logging.error(f"Unexpected error loading English spacy model: {e}")
-            logging.error(f"Traceback:\n{traceback.format_exc()}")
-            _nlp_en = None
+        with _nlp_en_lock:
+            # ロック取得後に再度チェック（他のスレッドが既にロードした可能性があるため）
+            if _nlp_en is None:
+                try:
+                    _nlp_en = spacy.load("en_core_web_md")
+                    logging.info("Successfully loaded English spacy model: en_core_web_md")
+                except OSError as e:
+                    logging.error(f"Failed to load English spacy model 'en_core_web_md': {e}")
+                    logging.error("Please install the model with: python -m spacy download en_core_web_md")
+                    _nlp_en = None
+                except Exception as e:
+                    logging.error(f"Unexpected error loading English spacy model: {e}")
+                    logging.error(f"Traceback:\n{traceback.format_exc()}")
+                    _nlp_en = None
     return _nlp_en
 
 def tokenize(sentence: str, lang: str) -> List[str]:
@@ -275,20 +286,31 @@ def build_vocabulary(tokenized_data: List[List[str]], special_tokens: Optional[D
 def tokens_to_ids(tokens: List[str], vocabulary: Vocabulary) -> List[int]:
     return [vocabulary[token] for token in tokens]
 
-# モジュールレベルの弱参照キャッシュ（vocabularyオブジェクトがGCされると自動的にエントリが削除される）
-_id_to_token_cache = weakref.WeakKeyDictionary()
+# モジュールレベルのキャッシュ
+# WeakKeyDictionary: 弱参照可能なVocabularyオブジェクト用（GC時に自動削除）
+_id_to_token_cache_weak = weakref.WeakKeyDictionary()
+# 通常のdict: 組み込みdict語彙用（id(vocabulary)をキーとして使用）
+_dict_vocab_cache: Dict[int, Dict[int, str]] = {}
+_dict_vocab_cache_lock = threading.Lock()
+
+def clear_dict_vocab_cache() -> None:
+    """組み込みdict語彙キャッシュをクリアする（メモリ管理用）"""
+    global _dict_vocab_cache
+    with _dict_vocab_cache_lock:
+        _dict_vocab_cache.clear()
 
 def ids_to_tokens(ids: List[int], vocabulary: Any) -> List[str]:
-    # vocabularyがVocabularyクラスのインスタンスである場合
+    # vocabularyがVocabularyクラスのインスタンスである場合（弱参照可能）
     if hasattr(vocabulary, 'id2token'):
         # 安全なルックアップを使用（存在しないIDの場合は'<unk>'を返す）
         return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # vocabularyオブジェクト自体をキーとしてキャッシュを管理（弱参照）
-        # キャッシュに存在しない場合のみ逆マッピングを構築
-        if vocabulary not in _id_to_token_cache:
-            _id_to_token_cache[vocabulary] = {v: k for k, v in vocabulary.items()}
-
-        id_to_token = _id_to_token_cache[vocabulary]
+        # id(vocabulary)をキーとしてキャッシュを管理
+        vocab_id = id(vocabulary)
+        with _dict_vocab_cache_lock:
+            # キャッシュに存在しない場合のみ逆マッピングを構築
+            if vocab_id not in _dict_vocab_cache:
+                _dict_vocab_cache[vocab_id] = {v: k for k, v in vocabulary.items()}
+            id_to_token = _dict_vocab_cache[vocab_id]
         return [id_to_token.get(id, '<unk>') for id in ids]

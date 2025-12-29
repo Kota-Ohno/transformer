@@ -316,6 +316,10 @@ def _initialize_model(
         max_seq_length=CONFIG.model_hyperparameters.max_seq_length
     )
 
+    # モデルをデバイスに移動（JITウォームアップ前に実行）
+    model = model.to(device)
+    # 注意: DataParallel/DistributedDataParallelを使用する場合は、デバイス移動後にラップする
+
     # JITコンパイルをオプションで適用
     if CONFIG.training_config.use_jit_compile and version.parse(torch.__version__) >= version.parse("2.0.0") and device.type == 'cuda':
         try:

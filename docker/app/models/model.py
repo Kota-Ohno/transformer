@@ -88,6 +88,9 @@ class TranslationModel(nn.Module):
             # 生成されたトークンIDを格納
             output_ids = []
 
+            # 各シーケンスの終了状態を追跡
+            finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
             with torch.no_grad():
                 for _ in range(max_length):
                     # 現在のターゲットシーケンスのマスクを作成
@@ -107,7 +110,8 @@ class TranslationModel(nn.Module):
                     output_ids.append(next_token)
 
                     # 終了トークンが生成されたかチェック
-                    if (next_token == end_token).all():
+                    finished |= (next_token.squeeze(-1) == end_token)
+                    if finished.all():
                         break
 
                     # 次のイテレーションのためにターゲットシーケンスに追加
@@ -193,7 +197,13 @@ def create_transformer_model(input_vocab_size, output_vocab_size,
         if 'weight' in name:
             if 'embedding' in name:
                 # 埋め込み層は正規分布で初期化
-                nn.init.normal_(param, mean=0, std=param.shape[1] ** -0.5)
+                # テンソルのランクをチェックしてから次元にアクセス
+                if param.dim() >= 2:
+                    std = param.shape[1] ** -0.5
+                else:
+                    # 1次元の場合は最初の次元を使用、またはフォールバック
+                    std = param.shape[0] ** -0.5 if param.shape[0] > 0 else 1.0
+                nn.init.normal_(param, mean=0, std=std)
             elif 'norm' not in name:  # LayerNormは除外（デフォルトの初期化を使用）
                 if param.dim() > 1:
                     # その他の重みはXavier uniform初期化

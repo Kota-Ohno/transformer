@@ -55,20 +55,19 @@ class Trainer:
 
             if batch_size is None:
                 try:
-                    # 1バッチを取得してbatch_sizeを推論
-                    batch = next(iter(self.train_loader))
-                    if isinstance(batch, (list, tuple)) and len(batch) > 0:
-                        batch_size = len(batch[0])
-                    elif isinstance(batch, torch.Tensor):
-                        batch_size = len(batch)
+                    # DataLoaderのdataset属性からbatch_sizeを推論
+                    if hasattr(self.train_loader, 'dataset') and hasattr(self.train_loader.dataset, '__len__'):
+                        dataset_len = len(self.train_loader.dataset)
+                        num_batches = len(self.train_loader)
+                        if num_batches > 0:
+                            batch_size = (dataset_len + num_batches - 1) // num_batches
+                        else:
+                            batch_size = 1
                     else:
-                        raise ValueError(f"予期しないバッチ形式: {type(batch)}")
-                except StopIteration:
-                    logging.warning("train_loaderが空です。batch_sizeを推論できません。デフォルト値1を使用します")
-                    batch_size = 1
+                        batch_size = CONFIG.training_config.batch_size if hasattr(CONFIG.training_config, 'batch_size') else 1
                 except Exception as e:
-                    logging.warning(f"batch_sizeの推論中にエラーが発生しました: {e}。デフォルト値1を使用します")
-                    batch_size = 1
+                    logging.warning(f"batch_sizeの推論中にエラーが発生しました: {e}。CONFIGから取得します")
+                    batch_size = CONFIG.training_config.batch_size if hasattr(CONFIG.training_config, 'batch_size') else 1
 
             # batch_sizeがintであることを確認
             if not isinstance(batch_size, int):
@@ -164,7 +163,8 @@ class Trainer:
             tgt_input = tgt_input.to(self.device, non_blocking=True)
             tgt_output = tgt_output.to(self.device, non_blocking=True)
 
-            with torch.cuda.amp.autocast():
+            device = self.device
+            with torch.amp.autocast(device_type=device.type):
                 output, _ = self.model(src, tgt_input)
 
                 output_dim = output.shape[-1]
@@ -193,6 +193,12 @@ class Trainer:
                 "loss": f"{loss.item() * accumulation_steps:.4f}",
                 "lr": f"{current_lr:.6f}"
             })
+
+        if total_batches == 0:
+            raise ValueError(
+                "train_loaderが空です。データが読み込まれていないか、"
+                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+            )
 
         return epoch_loss / total_batches
 
@@ -312,6 +318,9 @@ class Trainer:
 
         should_stop_training = False
         last_epoch = start_epoch
+        # 訓練ループ開始前にデフォルト値を初期化（KeyboardInterrupt時のNameErrorを防ぐ）
+        valid_loss = float('inf')
+        bleu_score = 0.0
 
         for epoch in range(start_epoch, self.args.epochs):
             if should_stop_training:

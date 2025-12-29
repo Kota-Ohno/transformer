@@ -379,9 +379,12 @@ class DataAugmentor:
         if not tokenized_texts:
             return texts
 
-        max_len = max(len(tokens) for tokens in tokenized_texts if tokens)
-        if max_len == 0:
+        # 非空のトークンリストの長さを収集
+        lengths = [len(tokens) for tokens in tokenized_texts if tokens]
+        if not lengths:
             return texts
+
+        max_len = max(lengths)
 
         # CPU上でパディングしてバッチテンソルを作成
         batch_tensors = []

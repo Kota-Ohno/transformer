@@ -175,10 +175,5 @@ if __name__ == "__main__":
         elif args.topic in TOPIC_FUNCTIONS:
             # マッピングされた関数を呼び出し
             TOPIC_FUNCTIONS[args.topic]()
-        else:
-            # 未知のトピックに対するフォールバック
-            print(f"エラー: 未知のトピック '{args.topic}' が指定されました。")
-            print(f"利用可能なトピック: {', '.join(TOPIC_FUNCTIONS.keys())}, all")
-            parser.print_help()
     else:
         main()

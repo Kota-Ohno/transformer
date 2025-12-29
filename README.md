@@ -291,69 +291,33 @@ python predict.py
 
 上記の設定は一般的な環境での推奨値です。お使いのGPUメモリに合わせてバッチサイズを調整してください。より大きなバッチサイズはより安定した学習につながります。
 
-# Transformerモデルトレーニング高速化ガイド
+## トレーニング高速化のヒント
 
-このプロジェクトは日本語から英語への翻訳を行うTransformerモデルの実装です。以下に学習実行時間を短縮するための設定と改善点を説明します。
+トレーニングの実行時間を短縮するための最適化手法：
 
-## 主な改善点
+1. **メモリプロファイリング**: GPUメモリ使用量を監視して最適なバッチサイズを決定
+   ```bash
+   # nvidia-smiでリアルタイム監視
+   watch -n 1 nvidia-smi
 
-学習の実行時間短縮のために以下の最適化が適用されました：
+   # PyTorchプロファイラを使用（コードに追加）
+   # with torch.profiler.profile(...) as prof:
+   #     prof.export_chrome_trace("trace.json")
+   ```
 
-1.  **データ処理の効率化**
-    - データローダーのバッファリング強化
-    - バッチ処理の最適化
-    - シーケンス長制限の緩和
+2. **バッチサイズの調整**: GPUメモリが許す限り大きく設定（OOMエラーが出る場合は段階的に減らす）
+   - 16GB GPU: バッチサイズ 32-64
+   - 8GB GPU: バッチサイズ 16-32
+   - 4GB GPU: バッチサイズ 8-16
 
-2.  **メモリ使用量の最適化**
-    - 勾配蓄積ステップ数の増加
-    - GPU PINメモリの事前割り当て
-    - キャッシュクリア頻度の最適化
+3. **勾配蓄積**: メモリが不足する場合は、`--grad-accum-steps`を増やして実効バッチサイズを維持
 
-3.  **モデルサイズの調整**
-    - よりコンパクトなモデル設定の追加
-    - GPUメモリに基づく自動的なモデルサイズ調整
+4. **環境変数による設定**: `utils/config.py`の設定を環境変数でオーバーライド可能
+   ```bash
+   export TRANSFORMER_MODEL_HIDDEN_SIZE=256
+   export TRANSFORMER_MODEL_NUM_HEADS=4
+   export TRANSFORMER_MODEL_NUM_LAYERS=4
+   export TRANSFORMER_TRAINING_GRADIENT_ACCUMULATION_STEPS=8
+   ```
 
-4.  **プログレス監視の効率化**
-    - ログ出力頻度の削減
-    - 進捗表示の更新頻度の最適化
-
-## 使用方法
-
-以下のコマンドで高速実行モードでトレーニングを開始できます：
-
-```bash
-python main.py --fast
-```
-
-さらに小さいモデルを使用する場合：
-
-```bash
-python main.py --fast --small-model
-```
-
-開発用にサンプル数を制限してテスト実行する場合：
-
-```bash
-python main.py --fast --limit-samples 1000
-```
-
-> **注意**: このプロジェクトはDockerコンテナ内で実行することを前提としています。
-> コンテナ内では単に `python main.py --fast` というように実行できます。
-
-## 主なコマンドラインオプション
-
--   `--fast`: 高速トレーニングモードを有効化（エポック数減少、勾配蓄積増加）
--   `--small-model`: 小さなモデルアーキテクチャを使用（hidden_size=256, heads=4, layers=4）
--   `--limit-samples N`: トレーニングデータをN個のサンプルに制限
--   `--no-nltk-download`: NLTKリソースのダウンロードをスキップ（既にダウンロード済みの場合）
-
-## 構成設定
-
-モデルサイズをさらにカスタマイズする場合は、`utils/config.py` を参照してください。環境変数によるオーバーライドも可能です。
-
-```bash
-export TRANSFORMER_MODEL_HIDDEN_SIZE=256
-export TRANSFORMER_MODEL_NUM_HEADS=4
-export TRANSFORMER_MODEL_NUM_LAYERS=4
-export TRANSFORMER_TRAINING_GRADIENT_ACCUMULATION_STEPS=8
-```
+詳細なトレーニングオプションについては、[トレーニングオプション](#トレーニングオプション)セクションを参照してください。

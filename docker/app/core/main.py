@@ -33,24 +33,25 @@ class Colors:
     ERROR = colorama.Fore.RED
     RESET = colorama.Fore.RESET
 
+# カスタムフォーマッターでログレベルに応じた色分けを実装
+class ColoredFormatter(logging.Formatter):
+    LEVEL_COLORS = {
+        logging.DEBUG: Colors.INFO,
+        logging.INFO: Colors.INFO,
+        logging.WARNING: Colors.WARNING,
+        logging.ERROR: Colors.ERROR,
+        logging.CRITICAL: Colors.ERROR,
+    }
+
+    def format(self, record):
+        color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
+        record_copy = copy.copy(record)
+        record_copy.levelname = f"{color}{record.levelname}{Colors.RESET}"
+        record_copy.msg = f"{color}{record.msg}{Colors.RESET}"
+        return super().format(record_copy)
+
 def setup_logging():
     """ロギングの設定"""
-    # カスタムフォーマッターでログレベルに応じた色分けを実装
-    class ColoredFormatter(logging.Formatter):
-        LEVEL_COLORS = {
-            logging.DEBUG: Colors.INFO,
-            logging.INFO: Colors.INFO,
-            logging.WARNING: Colors.WARNING,
-            logging.ERROR: Colors.ERROR,
-            logging.CRITICAL: Colors.ERROR,
-        }
-
-        def format(self, record):
-            color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
-            record_copy = copy.copy(record)
-            record_copy.levelname = f"{color}{record.levelname}{Colors.RESET}"
-            record_copy.msg = f"{color}{record.msg}{Colors.RESET}"
-            return super().format(record_copy)
 
     # ルートロガーを取得
     root_logger = logging.getLogger()
@@ -145,23 +146,22 @@ def main():
 
     # データサンプル数制限の設定
     if args.limit_samples > 0:
-        # フラグと値の両方が存在するかチェック
-        limit_samples_idx = None
-        try:
-            limit_samples_idx = unknown_args.index('--limit-samples')
-        except ValueError:
-            pass
+        # 既存の--limit-samplesフラグとその値を削除
+        filtered_args = []
+        i = 0
+        while i < len(unknown_args):
+            if unknown_args[i] == '--limit-samples':
+                i += 1  # フラグをスキップ
+                # 次の要素が値（フラグでない）ならそれもスキップ
+                if i < len(unknown_args) and not unknown_args[i].startswith('--'):
+                    i += 1
+            else:
+                filtered_args.append(unknown_args[i])
+                i += 1
 
-        if limit_samples_idx is None or (limit_samples_idx + 1 >= len(unknown_args) or
-                                         unknown_args[limit_samples_idx + 1] != str(args.limit_samples)):
-            # 既存のエントリを削除（存在する場合）
-            if limit_samples_idx is not None:
-                # 次の要素が値の可能性がある場合はそれも削除
-                if limit_samples_idx + 1 < len(unknown_args) and not unknown_args[limit_samples_idx + 1].startswith('--'):
-                    unknown_args.pop(limit_samples_idx + 1)
-                unknown_args.pop(limit_samples_idx)
-            # 新しいフラグと値を追加
-            unknown_args.extend(['--limit-samples', str(args.limit_samples)])
+        # 新しいフラグと値を追加
+        filtered_args.extend(['--limit-samples', str(args.limit_samples)])
+        unknown_args[:] = filtered_args
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
 
     # ロギングの設定

@@ -7,17 +7,12 @@ from typing import Dict, Any
 # 評価指標用のダウンロード
 def download_nltk_resources():
     """必要なnltkリソースをダウンロードします。環境変数でスキップ可能。"""
-    # osモジュールが関数内でローカル変数として宣言される前にアクセスされているので、
-    # このインポートが必要です
-    import os
-
     # 環境変数によるスキップ
     if os.environ.get('SKIP_NLTK_DOWNLOAD') == '1':
         logging.info("環境変数の設定によりNLTKリソースのダウンロードをスキップします")
         return
 
     try:
-        import nltk
 
         # カスタムダウンロードディレクトリを設定（Docker環境に依存しない場所）
         nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
@@ -110,12 +105,12 @@ def create_tgt_mask(tgt: torch.Tensor, tgt_pad_idx: int) -> torch.Tensor:
 
     # 因果的マスクを作成
     tgt_len = tgt.shape[1]
-    tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=tgt.device)).bool()
+    tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=tgt.device, dtype=tgt_pad_mask.dtype))
 
     # 両方のマスクを結合（パディングマスクの形状を調整）
     # tgt_pad_mask: [batch_size, 1, 1, tgt_len] -> [batch_size, 1, tgt_len, tgt_len]
     tgt_pad_mask_expanded = tgt_pad_mask.squeeze(2).expand(-1, -1, tgt_len, -1)
-    tgt_mask = tgt_pad_mask_expanded & tgt_sub_mask.unsqueeze(0).unsqueeze(0)
+    tgt_mask = tgt_pad_mask_expanded * tgt_sub_mask.unsqueeze(0).unsqueeze(0)
 
     return tgt_mask
 # --- ここまでマスク生成関数 ---
