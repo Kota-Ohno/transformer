@@ -9,34 +9,35 @@ import re
 import logging
 import traceback
 import weakref
+from typing import List, Tuple, Optional, Callable, Any, Dict
 
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
-    def __init__(self, X, Y, transform=None):
+    def __init__(self, X: List, Y: List, transform: Optional[Callable] = None):
         self.X = X
         self.Y = Y
         self.transform = transform
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.X)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Tuple[Any, Any]:
         x, y = self.X[idx], self.Y[idx]
         if self.transform:
             x = self.transform(x)
         return x, y
 
 # データの読み込みと前処理
-def preprocess_data(data):
+def preprocess_data(data: Any) -> Any:
     # トークン化やエンコーディングの具体的な処理をここに実装
     # 例: data = tokenize_and_encode(data)
     return data
 
-def set_data(X, y):
+def set_data(X: List, y: List) -> MyDataset:
     dataset = MyDataset(X, y)
     return dataset
 
-def pad_inner_seq(seq, pad_token, max_length):
+def pad_inner_seq(seq: List[int], pad_token: int, max_length: int) -> List[int]:
     """シーケンスをパディングする関数（一次元配列向け）"""
     # タプルの場合はリストに変換
     if isinstance(seq, tuple):
@@ -48,7 +49,7 @@ def pad_inner_seq(seq, pad_token, max_length):
     else:
         return seq[:max_length]
 
-def flatten_and_convert(sequence):
+def flatten_and_convert(sequence: Any) -> List[int]:
     """
     あらゆる形式のネストされた配列を平坦化し、すべての要素を整数に変換する関数
     無効な値は0に変換される
@@ -68,7 +69,7 @@ def flatten_and_convert(sequence):
     _flatten(sequence)
     return result
 
-def collate_fn(batch):
+def collate_fn(batch: List[Tuple[Any, Any]]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     バッチデータをテンソルに変換するための関数
     どんなバッチデータでも安全に処理できるよう設計
@@ -123,7 +124,7 @@ def collate_fn(batch):
         raise RuntimeError(f"Failed to process batch in collate_fn: {e}") from e
 
 # データローダーを作成
-def create_data_loader(dataset_or_data, batch_size):
+def create_data_loader(dataset_or_data: Any, batch_size: int) -> DataLoader:
     """
     データセットまたはトークンIDのリストからデータローダーを作成
 
@@ -150,7 +151,7 @@ def create_data_loader(dataset_or_data, batch_size):
 _nlp_ja = None
 _nlp_en = None
 
-def get_nlp_ja():
+def get_nlp_ja() -> Optional[Any]:
     """
     日本語spacyモデルを遅延ロードするアクセサ関数
     モデルが存在しない場合はNoneを返し、エラーをログに記録
@@ -170,7 +171,7 @@ def get_nlp_ja():
             _nlp_ja = None
     return _nlp_ja
 
-def get_nlp_en():
+def get_nlp_en() -> Optional[Any]:
     """
     英語spacyモデルを遅延ロードするアクセサ関数
     モデルが存在しない場合はNoneを返し、エラーをログに記録
@@ -190,7 +191,7 @@ def get_nlp_en():
             _nlp_en = None
     return _nlp_en
 
-def tokenize(sentence, lang):
+def tokenize(sentence: str, lang: str) -> List[str]:
     # Validate language upfront
     if lang not in ("ja_JP", "en_US"):
         raise ValueError(f"Unsupported language: {lang}. Supported languages are 'ja_JP' and 'en_US'.")
@@ -217,7 +218,7 @@ def tokenize(sentence, lang):
     return tokens
 
 class Vocabulary:
-    def __init__(self, special_tokens=None):
+    def __init__(self, special_tokens: Optional[Dict[str, int]] = None):
         # 特殊トークンの初期化
         if special_tokens is None:
             special_tokens = {'<pad>': 0, '<unk>': 1, '<s>': 2}
@@ -236,13 +237,13 @@ class Vocabulary:
         else:
             self.next_id = 0
 
-    def add_token(self, token):
+    def add_token(self, token: str) -> None:
         if token not in self.token2id:
             self.token2id[token] = self.next_id
             self.id2token[self.next_id] = token
             self.next_id += 1
 
-    def build_vocab(self, counter, min_freq=1):
+    def build_vocab(self, counter: Counter, min_freq: int = 1) -> None:
         # カウンターの頻度でソート
         sorted_tokens = sorted(counter.items(), key=lambda x: (-x[1], x[0]))
 
@@ -251,17 +252,17 @@ class Vocabulary:
             if freq >= min_freq:
                 self.add_token(token)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.token2id)
 
     # __getitem__メソッドを追加
-    def __getitem__(self, token):
+    def __getitem__(self, token: str) -> int:
         # 安全なルックアップ：tokenが見つからない場合、'<unk>'を試み、それも存在しない場合は0を返す
         unk_id = self.token2id.get('<unk>', 0)
         return self.token2id.get(token, unk_id)
 
 # 使用例
-def build_vocabulary(tokenized_data, special_tokens=None):
+def build_vocabulary(tokenized_data: List[List[str]], special_tokens: Optional[Dict[str, int]] = None) -> Vocabulary:
     # トークンのカウント
     counter = Counter(token for sentence in tokenized_data for token in sentence)
 
@@ -271,13 +272,13 @@ def build_vocabulary(tokenized_data, special_tokens=None):
 
     return vocabulary
 
-def tokens_to_ids(tokens, vocabulary):
+def tokens_to_ids(tokens: List[str], vocabulary: Vocabulary) -> List[int]:
     return [vocabulary[token] for token in tokens]
 
 # モジュールレベルの弱参照キャッシュ（vocabularyオブジェクトがGCされると自動的にエントリが削除される）
 _id_to_token_cache = weakref.WeakKeyDictionary()
 
-def ids_to_tokens(ids, vocabulary):
+def ids_to_tokens(ids: List[int], vocabulary: Any) -> List[str]:
     # vocabularyがVocabularyクラスのインスタンスである場合
     if hasattr(vocabulary, 'id2token'):
         # 安全なルックアップを使用（存在しないIDの場合は'<unk>'を返す）

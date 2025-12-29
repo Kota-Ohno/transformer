@@ -4,9 +4,26 @@ import json
 from dataclasses import dataclass, field, is_dataclass
 from typing import List, Any, get_origin
 
-# GPUメモリに基づくモデル設定の自動調整
 class ModelConfig:
+    """
+    GPUメモリに基づいてモデル設定を自動調整するためのユーティリティクラス。
+
+    このクラスは、利用可能なGPUメモリに応じて最適なモデルサイズを決定します。
+    GlobalConfigの初期化時に使用され、ModelHyperparametersのデフォルト値を設定します。
+
+    注意: このクラスは直接インスタンス化せず、from_gpu_memory()クラスメソッドを使用してください。
+    """
     def __init__(self, hidden_size: int, num_heads: int, num_layers: int, d_ff: int, dropout: float, max_seq_length: int, rel_pos_max_distance: int):
+        """
+        Args:
+            hidden_size: 隠れ層の次元数
+            num_heads: アテンションヘッド数
+            num_layers: エンコーダー/デコーダーのレイヤー数
+            d_ff: フィードフォワード層の次元数
+            dropout: ドロップアウト率
+            max_seq_length: 最大シーケンス長
+            rel_pos_max_distance: 相対位置エンコーディングの最大距離
+        """
         self.hidden_size = hidden_size
         self.num_heads = num_heads
         self.num_layers = num_layers
@@ -17,6 +34,19 @@ class ModelConfig:
 
     @classmethod
     def from_gpu_memory(cls):
+        """
+        GPUメモリに基づいて最適なモデル設定を生成します。
+
+        Returns:
+            ModelConfig: GPUメモリに応じたモデル設定インスタンス
+
+        メモリ別の設定:
+            - 16GB以上: hidden=768, heads=12, layers=10
+            - 8GB以上16GB未満: hidden=512, heads=8, layers=4
+            - 4GB以上8GB未満: hidden=384, heads=6, layers=4
+            - 4GB未満: hidden=256, heads=4, layers=3
+            - GPUなし: hidden=512, heads=8, layers=6 (デフォルト)
+        """
         if not torch.cuda.is_available():
             # GPUがない場合はデフォルト設定
             return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
@@ -38,6 +68,12 @@ class ModelConfig:
 
 @dataclass
 class ModelHyperparameters:
+    """
+    Transformerモデルのハイパーパラメータ設定。
+
+    GlobalConfigの初期化時に、GPUメモリに基づいて自動的に調整されます。
+    環境変数やconfig.jsonファイルでオーバーライド可能です。
+    """
     hidden_size: int = 512
     num_heads: int = 8
     num_layers: int = 6
@@ -77,6 +113,15 @@ class DataConfig:
 
 @dataclass
 class GlobalConfig:
+    """
+    アプリケーション全体の設定を管理するグローバル設定クラス。
+
+    設定の優先順位（高い順）:
+    1. 環境変数
+    2. config.jsonファイル
+    3. GPUメモリに基づく自動調整
+    4. デフォルト値
+    """
     model_hyperparameters: ModelHyperparameters = field(default_factory=ModelHyperparameters)
     training_config: TrainingConfig = field(default_factory=TrainingConfig)
     data_config: DataConfig = field(default_factory=DataConfig)
@@ -84,6 +129,14 @@ class GlobalConfig:
     verbose_mask_logs: bool = False
 
     def __post_init__(self):
+        """
+        設定の初期化処理。
+
+        処理順序:
+        1. GPUメモリに基づいてモデルのハイパーパラメータを自動調整
+        2. config.jsonファイルから設定を読み込み（存在する場合）
+        3. 環境変数から設定を読み込み（最高優先度）
+        """
         # GPUメモリに基づいてモデルのハイパーパラメータを調整
         adjusted_model_config = ModelConfig.from_gpu_memory()
         self.model_hyperparameters.hidden_size = adjusted_model_config.hidden_size

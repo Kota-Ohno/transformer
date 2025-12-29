@@ -3,9 +3,9 @@ import torch.nn as nn
 import torch.optim as optim
 import os
 import argparse
-import subprocess
 import logging
 import sys
+from typing import Optional, List
 from packaging import version
 from data.data import create_data_loader, set_data, collate_fn
 from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 
 
-def main(argv=None):
+def main(argv: Optional[List[str]] = None) -> None:
     """
     翻訳モデルのトレーニングを実行する主要な関数。
 

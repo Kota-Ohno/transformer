@@ -7,17 +7,29 @@ import torch
 import logging
 import traceback
 from datetime import datetime
-from typing import Optional
-from utils.config import MODEL_CONFIG
+from typing import Optional, Dict, Any
+import torch.nn as nn
+import torch.optim as optim
+from utils.config import CONFIG
 
-def setup_checkpointing_directory():
+def setup_checkpointing_directory() -> str:
     """チェックポイント保存用のディレクトリを設定します"""
     checkpoint_dir = os.path.join("models", "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
     return checkpoint_dir
 
-def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is_best=False,
-                  model_hidden_size=None, model_num_heads=None, model_num_layers=None):
+def save_checkpoint(
+    model: nn.Module,
+    optimizer: optim.Optimizer,
+    scheduler: Any,
+    epoch: int,
+    val_loss: float,
+    bleu_score: float,
+    is_best: bool = False,
+    model_hidden_size: Optional[int] = None,
+    model_num_heads: Optional[int] = None,
+    model_num_layers: Optional[int] = None
+) -> None:
     """
     モデルのチェックポイントを保存します
 
@@ -42,11 +54,11 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
     if hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
         num_layers = len(model.encoder.layers)
     else:
-        num_layers = MODEL_CONFIG.num_layers
+        num_layers = CONFIG.model_hyperparameters.num_layers
 
     # 引数で渡された値があれば優先して使用
-    hidden_size = model_hidden_size or MODEL_CONFIG.hidden_size
-    num_heads = model_num_heads or MODEL_CONFIG.num_heads
+    hidden_size = model_hidden_size or CONFIG.model_hyperparameters.hidden_size
+    num_heads = model_num_heads or CONFIG.model_hyperparameters.num_heads
     num_layers = model_num_layers or num_layers
 
     # モデル設定を辞書に保存
@@ -54,10 +66,10 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
         'HIDDEN_SIZE': hidden_size,
         'NUM_HEADS': num_heads,
         'NUM_LAYERS': num_layers,
-        'D_FF': MODEL_CONFIG.d_ff,
-        'DROPOUT_RATE': MODEL_CONFIG.dropout,
-        'MAX_SEQ_LENGTH': MODEL_CONFIG.max_seq_length,
-        'REL_POS_MAX_DISTANCE': MODEL_CONFIG.rel_pos_max_distance
+        'D_FF': CONFIG.model_hyperparameters.d_ff,
+        'DROPOUT_RATE': CONFIG.model_hyperparameters.dropout_rate,
+        'MAX_SEQ_LENGTH': CONFIG.model_hyperparameters.max_seq_length,
+        'REL_POS_MAX_DISTANCE': CONFIG.model_hyperparameters.rel_pos_max_distance
     }
 
     # チェックポイント情報を準備
@@ -117,7 +129,12 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
             logging.error(traceback.format_exc())
             raise
 
-def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
+def load_checkpoint(
+    checkpoint_path: str,
+    model: nn.Module,
+    optimizer: Optional[optim.Optimizer] = None,
+    scheduler: Optional[Any] = None
+) -> Dict[str, Any]:
     """
     チェックポイントからモデルを読み込みます
 

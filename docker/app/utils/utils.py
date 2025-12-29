@@ -1,8 +1,8 @@
 import torch
-
 import nltk
 import os
 import logging
+from typing import Dict, Any
 
 # 評価指標用のダウンロード
 def download_nltk_resources():
@@ -43,7 +43,7 @@ def download_nltk_resources():
         logging.error(f"nltkリソースのダウンロード中にエラーが発生しました: {e}")
 
 # --- マスク生成関数 ---
-def create_padding_mask(seq, pad_idx):
+def create_padding_mask(seq: torch.Tensor, pad_idx: int) -> torch.Tensor:
     """
     パディングトークンを無視するためのマスクを作成
 
@@ -59,7 +59,7 @@ def create_padding_mask(seq, pad_idx):
     mask = (seq != pad_idx).float().unsqueeze(1).unsqueeze(2)
     return mask
 
-def create_subsequent_mask(seq):
+def create_subsequent_mask(seq: torch.Tensor) -> torch.Tensor:
     """
     デコーダーの自己注意用の因果的マスクを作成
 
@@ -79,20 +79,59 @@ def create_subsequent_mask(seq):
     mask = mask.unsqueeze(0).unsqueeze(1).expand(seq.size(0), 1, seq_len, seq_len)
 
     return mask
+
+def create_src_mask(src: torch.Tensor, src_pad_idx: int) -> torch.Tensor:
+    """
+    ソースシーケンス用のマスクを作成（エンコーダー用）
+
+    Args:
+        src: ソースシーケンス [batch_size, src_len]
+        src_pad_idx: ソースパディングトークンのインデックス
+
+    Returns:
+        ソースマスク [batch_size, 1, 1, src_len]
+    """
+    return create_padding_mask(src, src_pad_idx)
+
+def create_tgt_mask(tgt: torch.Tensor, tgt_pad_idx: int) -> torch.Tensor:
+    """
+    ターゲットシーケンス用のマスクを作成（デコーダー用）
+    パディングマスクと因果的マスクを組み合わせたもの
+
+    Args:
+        tgt: ターゲットシーケンス [batch_size, tgt_len]
+        tgt_pad_idx: ターゲットパディングトークンのインデックス
+
+    Returns:
+        ターゲットマスク [batch_size, 1, tgt_len, tgt_len]
+    """
+    # パディングマスクを作成
+    tgt_pad_mask = create_padding_mask(tgt, tgt_pad_idx)
+
+    # 因果的マスクを作成
+    tgt_len = tgt.shape[1]
+    tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=tgt.device)).bool()
+
+    # 両方のマスクを結合（パディングマスクの形状を調整）
+    # tgt_pad_mask: [batch_size, 1, 1, tgt_len] -> [batch_size, 1, tgt_len, tgt_len]
+    tgt_pad_mask_expanded = tgt_pad_mask.squeeze(2).expand(-1, -1, tgt_len, -1)
+    tgt_mask = tgt_pad_mask_expanded & tgt_sub_mask.unsqueeze(0).unsqueeze(0)
+
+    return tgt_mask
 # --- ここまでマスク生成関数 ---
 
 
-def convert_ids_to_text(ids, id2word, skip_special=False):
+def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = False) -> str:
     """
     トークンIDを文字列に変換します
 
     Args:
-        ids (torch.Tensor or list): 変換するIDのリスト
-        id2word (dict): ID→単語の辞書
-        skip_special (bool): 特殊トークンをスキップするかどうか
+        ids: 変換するIDのリスト（torch.Tensorまたはlist）
+        id2word: ID→単語の辞書
+        skip_special: 特殊トークンをスキップするかどうか
 
     Returns:
-        str: 変換されたテキスト
+        変換されたテキスト
     """
     try:
         # テンソルの場合はリストに変換

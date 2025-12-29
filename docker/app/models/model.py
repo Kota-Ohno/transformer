@@ -7,6 +7,7 @@ import torch.nn as nn
 from models.encoder import Encoder
 from models.decoder import Decoder
 from utils.config import CONFIG
+from utils.utils import create_src_mask, create_tgt_mask
 
 class TranslationModel(nn.Module):
     """
@@ -19,20 +20,31 @@ class TranslationModel(nn.Module):
         self.src_pad_idx = src_pad_idx
         self.tgt_pad_idx = tgt_pad_idx
 
-    def make_src_mask(self, src):
-        # src_mask: [batch_size, 1, 1, src_len]
-        src_mask = (src != self.src_pad_idx).unsqueeze(1).unsqueeze(2)
-        return src_mask
+    def make_src_mask(self, src: torch.Tensor) -> torch.Tensor:
+        """
+        ソースシーケンス用のマスクを作成
 
-    def make_tgt_mask(self, tgt):
-        # tgt_mask: [batch_size, 1, tgt_len, tgt_len]
-        tgt_pad_mask = (tgt != self.tgt_pad_idx).unsqueeze(1).unsqueeze(2)
-        tgt_len = tgt.shape[1]
-        tgt_sub_mask = torch.tril(torch.ones((tgt_len, tgt_len), device=tgt.device)).bool()
-        tgt_mask = tgt_pad_mask & tgt_sub_mask
-        return tgt_mask
+        Args:
+            src: ソースシーケンス [batch_size, src_len]
 
-    def forward(self, src, tgt):
+        Returns:
+            ソースマスク [batch_size, 1, 1, src_len]
+        """
+        return create_src_mask(src, self.src_pad_idx)
+
+    def make_tgt_mask(self, tgt: torch.Tensor) -> torch.Tensor:
+        """
+        ターゲットシーケンス用のマスクを作成
+
+        Args:
+            tgt: ターゲットシーケンス [batch_size, tgt_len]
+
+        Returns:
+            ターゲットマスク [batch_size, 1, tgt_len, tgt_len]
+        """
+        return create_tgt_mask(tgt, self.tgt_pad_idx)
+
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor):
         src_mask = self.make_src_mask(src)
         tgt_mask = self.make_tgt_mask(tgt)
         enc_src = self.encoder(src, src_mask)

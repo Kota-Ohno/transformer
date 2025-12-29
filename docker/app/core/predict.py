@@ -4,14 +4,15 @@ import os
 import glob
 import logging
 import argparse
+from typing import Dict, Optional
 from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
 from data.data import tokenize, tokens_to_ids, ids_to_tokens
-from models.model import create_transformer_model
+from models.model import create_transformer_model, TranslationModel
 
 # ロギング設定
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-def load_model(input_vocab, output_vocab, model_path=None):
+def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_path: Optional[str] = None) -> TranslationModel:
     """
     モデルをロードする
 
@@ -107,12 +108,12 @@ def load_model(input_vocab, output_vocab, model_path=None):
     model.eval()
     return model
 
-def load_vocab(vocab_path):
+def load_vocab(vocab_path: str) -> Dict[str, int]:
     if not os.path.exists(vocab_path):
         raise FileNotFoundError(f"語彙ファイルが見つかりません: {vocab_path}")
     return torch.load(vocab_path, weights_only=True)
 
-def preprocess_input(sentence, input_vocab):
+def preprocess_input(sentence: str, input_vocab: Dict[str, int]) -> Optional[torch.Tensor]:
     """
     入力文をトークン化してテンソルに変換
 
@@ -135,7 +136,7 @@ def preprocess_input(sentence, input_vocab):
         logging.error(f"予期せぬエラーが発生しました: {e}")
         return None
 
-def handle_unknown_tokens(sentence, input_vocab):
+def handle_unknown_tokens(sentence: str, input_vocab: Dict[str, int]) -> Optional[torch.Tensor]:
     """未知トークンを<unk>に置き換えて処理する"""
     try:
         # <unk>トークンの存在をチェック
@@ -282,7 +283,7 @@ def _chunked_predict(tensor, _run_predict, is_cuda, start_token_id, end_token_id
         raise original_error
     raise RuntimeError("チャンク推論のリトライがすべて失敗しましたが、詳細な OOM エラーは取得できませんでした。")
 
-def translate(model, input_tensor, output_vocab, max_length=None):
+def translate(model: TranslationModel, input_tensor: torch.Tensor, output_vocab: Dict[str, int], max_length: Optional[int] = None) -> Optional[torch.Tensor]:
     """
     モデルを使って翻訳を実行
 
@@ -356,7 +357,7 @@ def translate(model, input_tensor, output_vocab, max_length=None):
                 logging.error(f"翻訳中にエラーが発生しました: {e}")
                 raise
 
-def main():
+def main() -> None:
     """メイン関数"""
     # コマンドライン引数のパース
     parser = argparse.ArgumentParser(description='Transformer翻訳モデルによる推論')

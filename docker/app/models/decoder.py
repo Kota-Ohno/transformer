@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from models.layers import PositionalEncoding, FeedForward
 from models.attention import MultiHeadAttention
+from utils.validation import validate_token_ids
 
 class DecoderLayer(nn.Module):
     """Transformerのデコーダーレイヤー"""
@@ -144,37 +145,8 @@ class Decoder(nn.Module):
             new_cache: 更新されたキャッシュ情報のリスト
         """
         # 入力検証：トークンIDの範囲と型をチェック
-        # 整数型であることを確認
-        if torch.is_floating_point(x):
-            raise ValueError(
-                f"Token IDs must be integers, but got dtype {x.dtype}. "
-                f"Expected torch.long or torch.int64."
-            )
-
-        # 範囲外の値を検出
-        invalid_mask = (x < 0) | (x >= self.embedding.num_embeddings)
-        if invalid_mask.any():
-            invalid_indices = torch.nonzero(invalid_mask, as_tuple=False)
-            invalid_values = x[invalid_mask]
-
-            # 詳細なエラー情報を構築
-            num_invalid = invalid_mask.sum().item()
-            min_invalid = invalid_values.min().item()
-            max_invalid = invalid_values.max().item()
-
-            # 最初の数個の無効なインデックスと値を取得（デバッグ用）
-            sample_indices = invalid_indices[:10].cpu().tolist()
-            sample_values = invalid_values[:10].cpu().tolist()
-
-            error_msg = (
-                f"Invalid token IDs detected: {num_invalid} out-of-range values found. "
-                f"Valid range is [0, {self.embedding.num_embeddings - 1}], "
-                f"but found values in range [{min_invalid}, {max_invalid}]. "
-                f"Sample invalid positions (batch_idx, seq_idx): {sample_indices}, "
-                f"with values: {sample_values}"
-            )
-
-            raise ValueError(error_msg)
+        vocab_size = self.embedding.num_embeddings
+        validate_token_ids(x, vocab_size, tensor_name="decoder input")
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x)
