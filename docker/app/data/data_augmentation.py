@@ -24,6 +24,13 @@ class DataAugmentor:
         self.sp_src = sp_src
         self.sp_tgt = sp_tgt
         self.translation_model = translation_model
+        # モデルをデバイスに移動（一度だけ）
+        if self.translation_model is not None:
+            self.translation_model = self.translation_model.to(CONFIG.device)
+            self.translation_model.eval()
+            self._model_device = next(self.translation_model.parameters()).device
+        else:
+            self._model_device = None
 
     def token_masking(self, token_ids: List[int], mask_prob: float = 0.15, rng: random.Random = None,
                       tokenizer=None) -> List[int]:
@@ -316,21 +323,16 @@ class DataAugmentor:
 
     def _translate_batch(self, texts: List[str], src_lang: str, tgt_lang: str) -> List[str]:
         """
-        テキストのバッチを翻訳する内部メソッド
+        テキストのバッチを翻訳する内部メソッド（真のバッチ処理を実装）
         """
-        if self.translation_model is None:
+        if self.translation_model is None or self._model_device is None:
             return texts
 
-        # ここでモデルを使って実際の翻訳を行う
-        # 実装はトレーニング済みモデルに依存
-        result = []
+        if not texts:
+            return []
+
         model = self.translation_model
         model.eval()
-
-        # モデルを正しいデバイスに移動（一度だけ）
-        model = model.to(CONFIG.device)
-        # モデルのデバイスを取得
-        model_device = next(model.parameters()).device
 
         # translate()メソッドの存在を確認
         has_translate = hasattr(model, "translate") and callable(getattr(model, "translate", None))
@@ -340,38 +342,90 @@ class DataAugmentor:
                 f"'predict()' メソッドを使用してフォールバックします。"
             )
 
+        # 使用するトークナイザーを決定
+        src_tokenizer = self.sp_src if src_lang == CONFIG.data_config.translation_source else self.sp_tgt
+        tgt_tokenizer = self.sp_src if tgt_lang == CONFIG.data_config.translation_source else self.sp_tgt
+
+        # パディングIDを取得
+        try:
+            pad_id = src_tokenizer.pad_id() if hasattr(src_tokenizer, 'pad_id') and callable(src_tokenizer.pad_id) else 0
+        except Exception:
+            pad_id = 0
+
+        # 最大シーケンス長を取得
+        max_seq_length = CONFIG.model_hyperparameters.max_seq_length
+
+        # CPU上で全テキストをトークナイズ
+        tokenized_texts = []
+        for text in texts:
+            try:
+                tokens = tokenize_with_sentencepiece(text, src_tokenizer, src_lang)
+                # 最大長で切り詰め
+                if len(tokens) > max_seq_length:
+                    tokens = tokens[:max_seq_length]
+                tokenized_texts.append(tokens)
+            except Exception as e:
+                logging.error(f"トークナイズ中にエラーが発生しました: {e}")
+                tokenized_texts.append([])  # エラー時は空リスト
+
+        # バッチ内の最大長を取得
+        if not tokenized_texts:
+            return texts
+
+        max_len = max(len(tokens) for tokens in tokenized_texts if tokens)
+        if max_len == 0:
+            return texts
+
+        # CPU上でパディングしてバッチテンソルを作成
+        batch_tensors = []
+        valid_indices = []  # 有効なテキストのインデックス
+        for idx, tokens in enumerate(tokenized_texts):
+            if not tokens:
+                continue
+            # パディング
+            padded_tokens = tokens + [pad_id] * (max_len - len(tokens))
+            batch_tensors.append(padded_tokens)
+            valid_indices.append(idx)
+
+        if not batch_tensors:
+            return texts
+
+        # バッチテンソルを作成（CPU上）
+        batch_tensor = torch.tensor(batch_tensors, dtype=torch.long)
+
+        # 一度だけGPUに移動
+        batch_tensor = batch_tensor.to(self._model_device)
+
+        # バッチ全体で翻訳を実行
+        result = [None] * len(texts)
         with torch.no_grad():
-            for text in texts:
-                # トークン化（内部で正規化される）
-                if src_lang == CONFIG.data_config.translation_source:
-                    tokens = tokenize_with_sentencepiece(text, self.sp_src, src_lang)
+            try:
+                if has_translate:
+                    output_tensor = model.translate(batch_tensor)
                 else:
-                    tokens = tokenize_with_sentencepiece(text, self.sp_tgt, src_lang)
+                    output_tensor = model.predict(batch_tensor)
 
-                # トークンをテンソルに変換し、モデルのデバイスに移動
-                input_tensor = torch.tensor([tokens], dtype=torch.long).to(model_device)
+                # 各アイテムごとに後処理
+                for batch_idx, orig_idx in enumerate(valid_indices):
+                    try:
+                        # 出力をトークンIDに変換（CPUに移動してから）
+                        output_ids = output_tensor[batch_idx].cpu().numpy().tolist()
 
-                # 翻訳
-                try:
-                    if has_translate:
-                        output_tensor = model.translate(input_tensor)
-                    else:
-                        # translate()が存在しない場合はpredict()を使用
-                        output_tensor = model.predict(input_tensor)
+                        # IDをトークンに変換
+                        output_tokens = tgt_tokenizer.decode_ids(output_ids)
+                        result[orig_idx] = output_tokens
+                    except Exception as e:
+                        logging.error(f"出力処理中にエラーが発生しました: {e}")
+                        result[orig_idx] = texts[orig_idx]  # エラー時は元のテキストを使用
+            except Exception as e:
+                logging.error(f"バッチ翻訳中にエラーが発生しました: {e}")
+                # エラー時は元のテキストを返す
+                return texts
 
-                    # 出力をトークンIDに変換
-                    output_ids = output_tensor[0].cpu().numpy().tolist()
-
-                    # IDをトークンに変換
-                    if tgt_lang == CONFIG.data_config.translation_source:
-                        output_tokens = self.sp_src.decode_ids(output_ids)
-                    else:
-                        output_tokens = self.sp_tgt.decode_ids(output_ids)
-
-                    result.append(output_tokens)
-                except Exception as e:
-                    logging.error(f"翻訳処理中にエラーが発生しました: {e}")
-                    result.append(text)  # エラー時は元のテキストを使用
+        # エラーで処理されなかったテキストは元のテキストを使用
+        for idx, output in enumerate(result):
+            if output is None:
+                result[idx] = texts[idx]
 
         return result
 

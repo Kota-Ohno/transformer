@@ -18,8 +18,16 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
     def get_lr(self):
         step = max(self.last_epoch + 1, 1)
         if step < self.warmup_steps:
-            lr = (self.d_model ** -0.5) * (step * self.warmup_steps ** -1.5)
-            return [max(self.min_lr, lr) for _ in self.base_lrs]
+            # 共有warmup乗数を計算
+            common_lr = (self.d_model ** -0.5) * (step * self.warmup_steps ** -1.5)
+            # warmup終了時の共通値を計算
+            warmup_end = (self.d_model ** -0.5) * (self.warmup_steps ** -0.5)
+            # 各グループのLRをスケールして、warmup終了時にbase_lrと一致させる
+            lrs = []
+            for base_lr in self.base_lrs:
+                lr_i = max(self.min_lr, common_lr * (base_lr / warmup_end))
+                lrs.append(lr_i)
+            return lrs
         else:
             if self.total_steps > self.warmup_steps:
                 progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)

@@ -34,6 +34,7 @@ class Trainer:
         self.best_bleu = 0.0
         self.patience_counter = 0
         self.wandb_available = False
+        self.max_epoch_retries = 3  # エポックあたりの最大リトライ回数
 
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:
@@ -125,6 +126,23 @@ class Trainer:
         elapsed_secs = int(elapsed_time - (elapsed_mins * 60))
         return elapsed_mins, elapsed_secs
 
+    def _is_recoverable_error(self, exception):
+        """回復可能なエラー（OOMなど）かどうかを判定"""
+        error_str = str(exception).lower()
+        # CUDA OOMエラーを検出
+        if isinstance(exception, RuntimeError):
+            if "out of memory" in error_str or "cuda" in error_str and "memory" in error_str:
+                return True
+        return False
+
+    def _cleanup_after_error(self):
+        """エラー後のクリーンアップ処理"""
+        if self.device.type == 'cuda':
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+        # オプティマイザーの状態をリセット
+        self.optimizer.zero_grad(set_to_none=True)
+
     def _train_epoch(self):
         self.model.train()
         epoch_loss = 0
@@ -207,42 +225,82 @@ class Trainer:
         last_epoch = start_epoch
         valid_loss = float('inf')
         bleu_score = 0.0
+        should_stop_training = False
+
         for epoch in range(start_epoch, self.args.epochs):
-            try:
-                last_epoch = epoch + 1
-                epoch_start_time = time.time()
+            if should_stop_training:
+                break
 
-                train_loss = self._train_epoch()
-                valid_loss, bleu_score = evaluate(self.model, self.val_loader, self.criterion, self.device, CONFIG.training_config, self.output_vocab)
+            retry_attempt = 0
+            epoch_completed = False
 
-                epoch_minutes, epoch_seconds = self._epoch_time(epoch_start_time, time.time())
+            # エポック処理をリトライ可能なループで囲む
+            while retry_attempt <= self.max_epoch_retries and not epoch_completed:
+                try:
+                    last_epoch = epoch + 1
+                    epoch_start_time = time.time()
 
-                logging.info(f"エポック: {epoch+1:02} | 所要時間: {epoch_minutes}m {epoch_seconds}s")
-                logging.info(f"トレーニング損失: {train_loss:.4f} | 検証損失: {valid_loss:.4f} | BLEUスコア: {bleu_score:.4f}")
+                    train_loss = self._train_epoch()
+                    valid_loss, bleu_score = evaluate(self.model, self.val_loader, self.criterion, self.device, CONFIG.training_config, self.output_vocab)
 
-                self._log_metrics(epoch+1, train_loss, valid_loss, bleu_score)
+                    epoch_minutes, epoch_seconds = self._epoch_time(epoch_start_time, time.time())
 
-                is_best = False
-                if valid_loss < self.best_valid_loss:
-                    self.best_valid_loss = valid_loss
-                    self.patience_counter = 0
-                    is_best = True
-                    logging.info(f"最良の検証損失を更新: {self.best_valid_loss:.4f}")
-                else:
-                    self.patience_counter += 1
-                    logging.info(f"検証損失が改善されていません。忍耐カウンター: {self.patience_counter}/{CONFIG.training_config.patience}")
+                    logging.info(f"エポック: {epoch+1:02} | 所要時間: {epoch_minutes}m {epoch_seconds}s")
+                    logging.info(f"トレーニング損失: {train_loss:.4f} | 検証損失: {valid_loss:.4f} | BLEUスコア: {bleu_score:.4f}")
 
-                if bleu_score > self.best_bleu:
-                    self.best_bleu = bleu_score
-                    logging.info(f"最良のBLEUスコアを更新: {self.best_bleu:.4f}")
+                    self._log_metrics(epoch+1, train_loss, valid_loss, bleu_score)
 
-                should_save_checkpoint = (
-                    is_best or
-                    epoch == self.args.epochs - 1 or
-                    (epoch + 1) % save_checkpoint_frequency == 0
-                )
+                    is_best = False
+                    if valid_loss < self.best_valid_loss:
+                        self.best_valid_loss = valid_loss
+                        self.patience_counter = 0
+                        is_best = True
+                        logging.info(f"最良の検証損失を更新: {self.best_valid_loss:.4f}")
+                    else:
+                        self.patience_counter += 1
+                        logging.info(f"検証損失が改善されていません。忍耐カウンター: {self.patience_counter}/{CONFIG.training_config.patience}")
 
-                if should_save_checkpoint:
+                    if bleu_score > self.best_bleu:
+                        self.best_bleu = bleu_score
+                        logging.info(f"最良のBLEUスコアを更新: {self.best_bleu:.4f}")
+
+                    should_save_checkpoint = (
+                        is_best or
+                        epoch == self.args.epochs - 1 or
+                        (epoch + 1) % save_checkpoint_frequency == 0
+                    )
+
+                    if should_save_checkpoint:
+                        save_checkpoint(
+                            model=self.model,
+                            optimizer=self.optimizer,
+                            scheduler=self.scheduler,
+                            epoch=epoch,
+                            val_loss=valid_loss,
+                            bleu_score=bleu_score,
+                            is_best=is_best,
+                            model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
+                            model_num_heads=CONFIG.model_hyperparameters.num_heads,
+                            model_num_layers=CONFIG.model_hyperparameters.num_layers
+                        )
+                    else:
+                        logging.info(f"チェックポイント保存をスキップしました (頻度: {save_checkpoint_frequency}エポックごと)")
+
+                    if self.patience_counter >= CONFIG.training_config.patience:
+                        logging.info(f"{CONFIG.training_config.patience}エポックの間改善が見られないため、トレーニングを早期停止します")
+                        epoch_completed = True
+                        should_stop_training = True
+                        break
+
+                    # 成功したらループを抜ける
+                    epoch_completed = True
+
+                    if self.device.type == 'cuda':
+                        torch.cuda.empty_cache()
+
+                except KeyboardInterrupt:
+                    last_epoch = epoch + 1
+                    logging.info("ユーザーによって中断されました。最終チェックポイントを保存します...")
                     save_checkpoint(
                         model=self.model,
                         optimizer=self.optimizer,
@@ -250,42 +308,45 @@ class Trainer:
                         epoch=epoch,
                         val_loss=valid_loss,
                         bleu_score=bleu_score,
-                        is_best=is_best,
+                        is_best=False,
                         model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                         model_num_heads=CONFIG.model_hyperparameters.num_heads,
                         model_num_layers=CONFIG.model_hyperparameters.num_layers
                     )
-                else:
-                    logging.info(f"チェックポイント保存をスキップしました (頻度: {save_checkpoint_frequency}エポックごと)")
-
-                if self.patience_counter >= CONFIG.training_config.patience:
-                    logging.info(f"{CONFIG.training_config.patience}エポックの間改善が見られないため、トレーニングを早期停止します")
+                    epoch_completed = True
+                    should_stop_training = True
                     break
 
-                if self.device.type == 'cuda':
-                    torch.cuda.empty_cache()
+                except Exception as e:
+                    # 完全なトレースバックとコンテキストをログに記録
+                    logging.error(f"エポック {epoch+1} の処理中にエラーが発生しました (リトライ試行: {retry_attempt}/{self.max_epoch_retries})")
+                    logging.error(f"エラータイプ: {type(e).__name__}")
+                    logging.error(f"エラーメッセージ: {str(e)}")
+                    logging.error("完全なトレースバック:")
+                    logging.error(traceback.format_exc())
 
-            except KeyboardInterrupt:
-                last_epoch = epoch + 1
-                logging.info("ユーザーによって中断されました。最終チェックポイントを保存します...")
-                save_checkpoint(
-                    model=self.model,
-                    optimizer=self.optimizer,
-                    scheduler=self.scheduler,
-                    epoch=epoch,
-                    val_loss=valid_loss,
-                    bleu_score=bleu_score,
-                    is_best=False,
-                    model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
-                    model_num_heads=CONFIG.model_hyperparameters.num_heads,
-                    model_num_layers=CONFIG.model_hyperparameters.num_layers
-                )
-                break
+                    # デバイス情報などのコンテキストを追加
+                    if self.device.type == 'cuda':
+                        logging.error(f"CUDAメモリ使用状況: 割り当て済み={torch.cuda.memory_allocated(self.device) / 1024**3:.2f}GB, "
+                                     f"キャッシュ済み={torch.cuda.memory_reserved(self.device) / 1024**3:.2f}GB")
 
-            except Exception as e:
-                logging.error(f"エポック {epoch+1} の処理中にエラーが発生しました: {e}")
-                traceback.print_exc()
-                continue
+                    # 回復可能なエラーかどうかを判定
+                    if self._is_recoverable_error(e):
+                        if retry_attempt < self.max_epoch_retries:
+                            logging.warning(f"回復可能なエラーを検出しました。クリーンアップ後にリトライします...")
+                            self._cleanup_after_error()
+                            retry_attempt += 1
+                            # whileループが継続してリトライ
+                        else:
+                            logging.error(f"エポック {epoch+1} で最大リトライ回数 ({self.max_epoch_retries}) に達しました。"
+                                         f"このエポックをスキップして次のエポックに進みます。")
+                            epoch_completed = True  # リトライを諦めて次のエポックへ
+                            break
+                    else:
+                        # 予期しない致命的なエラー: ログに記録して再発生
+                        logging.error(f"致命的な予期しないエラーが発生しました。トレーニングを停止します。")
+                        logging.error(f"エポック: {epoch+1}, リトライ試行: {retry_attempt}")
+                        raise
 
         logging.info("トレーニングが完了しました")
         logging.info(f"最良の検証損失: {self.best_valid_loss:.4f}, 最良のBLEUスコア: {self.best_bleu:.4f}")

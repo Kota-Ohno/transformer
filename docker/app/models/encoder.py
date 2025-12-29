@@ -87,24 +87,39 @@ class Encoder(nn.Module):
         vocab_size = self.embedding.num_embeddings
 
         # 整数型チェック
-        if not x.dtype.is_integer:
+        integer_dtypes = {torch.int8, torch.int16, torch.int32, torch.int64, torch.long}
+        if x.dtype not in integer_dtypes:
             raise TypeError(
                 f"Expected integer dtype for token indices, but got {x.dtype}. "
                 f"Input shape: {x.shape}"
             )
 
-        # 範囲チェック
-        x_min = x.min().item()
-        x_max = x.max().item()
-        valid_min = 0
-        valid_max = vocab_size - 1
+        # 範囲チェック（GPU-CPU同期を避けるため、デバッグモードでのみ詳細チェック）
+        if CONFIG.training_config.debug_mode:
+            # デバッグモード: 詳細な範囲チェック（GPU-CPU同期あり）
+            x_min = x.min().item()
+            x_max = x.max().item()
+            valid_min = 0
+            valid_max = vocab_size - 1
 
-        if x_min < valid_min or x_max > valid_max:
-            raise ValueError(
-                f"Token indices out of valid range [0, {valid_max}]. "
-                f"Found range: [{x_min}, {x_max}]. "
-                f"Input shape: {x.shape}, vocab_size: {vocab_size}"
-            )
+            if x_min < valid_min or x_max > valid_max:
+                raise ValueError(
+                    f"Token indices out of valid range [0, {valid_max}]. "
+                    f"Found range: [{x_min}, {x_max}]. "
+                    f"Input shape: {x.shape}, vocab_size: {vocab_size}"
+                )
+        else:
+            # 本番モード: GPU側のブールチェックのみ（同期なし）
+            is_valid = torch.all((x >= 0) & (x < vocab_size))
+            if not is_valid.item():
+                # エラー時のみ詳細情報を取得（この時点で同期は発生するが、エラー時のみ）
+                x_min = x.min().item()
+                x_max = x.max().item()
+                raise ValueError(
+                    f"Token indices out of valid range [0, {vocab_size - 1}]. "
+                    f"Found range: [{x_min}, {x_max}]. "
+                    f"Input shape: {x.shape}, vocab_size: {vocab_size}"
+                )
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x)

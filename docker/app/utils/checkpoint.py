@@ -2,10 +2,12 @@
 モデルのチェックポイント処理（保存・読み込み）を担当します。
 """
 import os
+import glob
 import torch
 import logging
 import traceback
 from datetime import datetime
+from typing import Optional
 from utils.config import MODEL_CONFIG
 
 def setup_checkpointing_directory():
@@ -83,11 +85,33 @@ def save_checkpoint(model, optimizer, scheduler, epoch, val_loss, bleu_score, is
 
     # 最良モデルの場合は別名で保存（同じcheckpointsディレクトリに保存）
     if is_best:
-        best_model_path = os.path.join(checkpoint_dir, f"best_model_{current_date}.pth")
+        best_model_path = os.path.join(checkpoint_dir, "best_model.pth")
+        temp_best_model_path = os.path.join(checkpoint_dir, "best_model.pth.tmp")
+
         try:
-            torch.save(checkpoint, best_model_path)
+            # 古いbest_model_*.pthファイルを削除
+            old_best_models = glob.glob(os.path.join(checkpoint_dir, "best_model_*.pth"))
+            for old_file in old_best_models:
+                try:
+                    os.remove(old_file)
+                    logging.info(f"古い最良モデルファイルを削除しました: {old_file}")
+                except Exception as e:
+                    logging.warning(f"古い最良モデルファイルの削除に失敗しました: {old_file}, エラー: {e}")
+
+            # 一時ファイルに保存（アトミックな保存）
+            torch.save(checkpoint, temp_best_model_path)
+
+            # 一時ファイルを正式なファイル名にリネーム（アトミック操作）
+            os.replace(temp_best_model_path, best_model_path)
+
             logging.info(f"最良モデルを保存しました: {best_model_path}")
         except Exception as e:
+            # 一時ファイルが残っている場合は削除を試みる
+            if os.path.exists(temp_best_model_path):
+                try:
+                    os.remove(temp_best_model_path)
+                except:
+                    pass
             logging.error(f"最良モデルの保存に失敗しました: {best_model_path}")
             logging.error(f"エラー詳細: {e}")
             logging.error(traceback.format_exc())
@@ -137,29 +161,24 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None):
 
     except Exception as e:
         logging.error(f"チェックポイントの読み込みに失敗しました: {e}")
-        traceback.print_exc()
-        return {
-            'epoch': 0,
-            'best_valid_loss': float('inf'),
-            'best_bleu': 0.0,
-            'model_config': {}
-        }
+        logging.error(traceback.format_exc())
+        raise
 
-def find_latest_checkpoint():
+def find_latest_checkpoint() -> Optional[str]:
     """
     最新のチェックポイントを探します
 
     Returns:
         最新のチェックポイントパス、存在しない場合はNone
     """
-    checkpoint_dir = os.path.join("models", "checkpoints")
+    checkpoint_dir: str = os.path.join("models", "checkpoints")
     if not os.path.exists(checkpoint_dir):
         return None
 
-    checkpoints = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.startswith("checkpoint")]
+    checkpoints: list[str] = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.startswith("checkpoint")]
     if not checkpoints:
         return None
 
     # 最新のファイルを見つける
-    latest_checkpoint = max(checkpoints, key=os.path.getctime)
+    latest_checkpoint: str = max(checkpoints, key=os.path.getmtime)
     return latest_checkpoint

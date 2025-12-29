@@ -110,8 +110,6 @@ def load_model(input_vocab, output_vocab, model_path=None):
 def load_vocab(vocab_path):
     if not os.path.exists(vocab_path):
         raise FileNotFoundError(f"語彙ファイルが見つかりません: {vocab_path}")
-    return torch.load(vocab_path, weights_only=True)    if not os.path.exists(vocab_path):
-        raise FileNotFoundError(f"語彙ファイルが見つかりません: {vocab_path}")
     return torch.load(vocab_path, weights_only=True)
 
 def preprocess_input(sentence, input_vocab):
@@ -163,7 +161,7 @@ def handle_unknown_tokens(sentence, input_vocab):
         logging.error(f"未知トークン処理中にエラーが発生しました: {e}")
         return None
 
-def _chunked_predict(tensor, _run_predict, is_cuda, initial_chunk_size=512, min_chunk_size=32, max_retries=5):
+def _chunked_predict(tensor, _run_predict, is_cuda, start_token_id, end_token_id, initial_chunk_size=512, min_chunk_size=32, max_retries=5):
     """
     OOM 時に入力をチャンク分割して推論をリトライする
 
@@ -171,6 +169,8 @@ def _chunked_predict(tensor, _run_predict, is_cuda, initial_chunk_size=512, min_
         tensor: 入力テンソル
         _run_predict: 単一チャンクで predict を実行する関数
         is_cuda: CUDA が利用可能かどうか
+        start_token_id: 開始トークンID
+        end_token_id: 終了トークンID
         initial_chunk_size: 初期チャンクサイズ
         min_chunk_size: 最小チャンクサイズ
         max_retries: 最大リトライ回数
@@ -224,9 +224,6 @@ def _chunked_predict(tensor, _run_predict, is_cuda, initial_chunk_size=512, min_
             # 出力をマージ（<s>, </s> をある程度意識して結合）
             if not chunk_outputs:
                 return None
-
-            start_token_id = 2  # TranslationModel.predict のデフォルト
-            end_token_id = 3
 
             merged_tokens = []
             num_chunks = len(chunk_outputs)
@@ -285,13 +282,14 @@ def _chunked_predict(tensor, _run_predict, is_cuda, initial_chunk_size=512, min_
         raise original_error
     raise RuntimeError("チャンク推論のリトライがすべて失敗しましたが、詳細な OOM エラーは取得できませんでした。")
 
-def translate(model, input_tensor, max_length=None):
+def translate(model, input_tensor, output_vocab, max_length=None):
     """
     モデルを使って翻訳を実行
 
     Args:
         model: 翻訳モデル
         input_tensor: 入力テンソル
+        output_vocab: 出力語彙（開始/終了トークンIDを取得するために使用）
         max_length: 最大生成長
 
     Returns:
@@ -302,6 +300,17 @@ def translate(model, input_tensor, max_length=None):
     if input_tensor is None:
         return None
 
+    # 出力語彙から開始/終了トークンIDを取得
+    start_token_id = output_vocab.get('<s>')
+    end_token_id = output_vocab.get('</s>')
+
+    if start_token_id is None:
+        logging.warning("出力語彙に '<s>' トークンが見つかりません。デフォルト値2を使用します。")
+        start_token_id = 2
+    if end_token_id is None:
+        logging.warning("出力語彙に '</s>' トークンが見つかりません。デフォルト値3を使用します。")
+        end_token_id = 3
+
     # 入力テンソルをモデルと同じデバイスに移動
     device = next(model.parameters()).device
     input_tensor = input_tensor.to(device)
@@ -311,7 +320,7 @@ def translate(model, input_tensor, max_length=None):
 
     def _run_predict(tensor):
         """単一チャンクで predict を実行するヘルパー"""
-        return model.predict(tensor, max_length=max_length)
+        return model.predict(tensor, max_length=max_length, start_token=start_token_id, end_token=end_token_id)
 
     # 翻訳を実行（勾配計算なし）
     with torch.no_grad():
@@ -333,6 +342,8 @@ def translate(model, input_tensor, max_length=None):
                         input_tensor,
                         _run_predict=_run_predict,
                         is_cuda=is_cuda,
+                        start_token_id=start_token_id,
+                        end_token_id=end_token_id,
                         initial_chunk_size=initial_chunk_size
                     )
                 except Exception as retry_err:
@@ -377,6 +388,9 @@ def main():
     except FileNotFoundError as e:
         logging.error(f"エラー: {e}")
         sys.exit(1)
+    except (ValueError, RuntimeError) as e:
+        logging.error(f"モデルのロード中にエラーが発生しました: {e}")
+        sys.exit(1)
 
     # 英語なら単語間にスペースを入れる
     spacer = " " if CONFIG.data_config.translation_destination == 'en_US' else ""
@@ -397,7 +411,7 @@ def main():
             continue
 
         # 翻訳実行
-        output_ids = translate(model, input_tensor)
+        output_ids = translate(model, input_tensor, output_vocab)
         if output_ids is None:
             logging.warning(f"翻訳に失敗しました: {stripped_line}")
             continue
@@ -423,6 +437,9 @@ def main():
             output_text.append(spacer.join(tokens))
 
         # 出力
+        if not output_text:
+            logging.warning(f"翻訳結果が生成されませんでした: {stripped_line}")
+            continue
         print("翻訳結果:", output_text[0])
 
     logging.info("終了しました")

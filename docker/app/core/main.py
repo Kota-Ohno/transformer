@@ -12,6 +12,7 @@ import argparse
 import logging
 import torch
 from datetime import datetime
+import copy
 import colorama
 
 # カラー出力の初期化
@@ -46,9 +47,10 @@ def setup_logging():
 
         def format(self, record):
             color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
-            record.levelname = f"{color}{record.levelname}{Colors.RESET}"
-            record.msg = f"{color}{record.msg}{Colors.RESET}"
-            return super().format(record)
+            record_copy = copy.copy(record)
+            record_copy.levelname = f"{color}{record.levelname}{Colors.RESET}"
+            record_copy.msg = f"{color}{record.msg}{Colors.RESET}"
+            return super().format(record_copy)
 
     # ルートロガーを取得
     root_logger = logging.getLogger()
@@ -91,7 +93,8 @@ def check_gpu_environment():
 
         # PyTorchバージョンチェック
         cuda_version = torch.version.cuda
-        logging.info(f"PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version}")
+        cuda_version_str = cuda_version if cuda_version is not None else "N/A (PyTorch built without CUDA)"
+        logging.info(f"PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version_str}")
     else:
         logging.warning("利用可能なGPUがありません - CPUで実行します")
 
@@ -129,7 +132,7 @@ def main():
         os.environ['TRANSFORMER_TRAINING_NUM_EPOCHS'] = '3'
         os.environ['TRANSFORMER_TRAINING_PATIENCE'] = '1'
         if '--fast' not in unknown_args:
-            unknown_args.append('--fast')
+            unknown_args.extend(['--fast'])
         print(f"{Colors.SUCCESS}高速モードが有効です: 少ないエポック数でトレーニングを高速化します{Colors.RESET}")
 
     # 小さいモデルの設定
@@ -142,7 +145,22 @@ def main():
 
     # データサンプル数制限の設定
     if args.limit_samples > 0:
-        if '--limit-samples' not in unknown_args:
+        # フラグと値の両方が存在するかチェック
+        limit_samples_idx = None
+        try:
+            limit_samples_idx = unknown_args.index('--limit-samples')
+        except ValueError:
+            pass
+
+        if limit_samples_idx is None or (limit_samples_idx + 1 >= len(unknown_args) or
+                                         unknown_args[limit_samples_idx + 1] != str(args.limit_samples)):
+            # 既存のエントリを削除（存在する場合）
+            if limit_samples_idx is not None:
+                # 次の要素が値の可能性がある場合はそれも削除
+                if limit_samples_idx + 1 < len(unknown_args) and not unknown_args[limit_samples_idx + 1].startswith('--'):
+                    unknown_args.pop(limit_samples_idx + 1)
+                unknown_args.pop(limit_samples_idx)
+            # 新しいフラグと値を追加
             unknown_args.extend(['--limit-samples', str(args.limit_samples)])
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
 

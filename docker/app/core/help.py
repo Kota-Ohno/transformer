@@ -100,6 +100,22 @@ def display_augment_help():
     print("  python text_tokenizer.py --augment  # 推奨される使用方法")
     print("  python train.py --augment  # 推奨される使用方法\n")
 
+# トピック名から表示関数へのマッピング
+TOPIC_FUNCTIONS = {
+    'tokenizer': display_tokenizer_help,
+    'train': display_train_help,
+    'predict': display_predict_help,
+    'augment': display_augment_help,
+}
+
+# 数字キーからトピック名へのマッピング（対話型メニュー用）
+NUMBER_TO_TOPIC = {
+    '1': 'tokenizer',
+    '2': 'train',
+    '3': 'predict',
+    '4': 'augment',
+}
+
 # メインヘルプメニューを更新
 MAIN_MENU = """
 利用可能なコマンド:
@@ -128,23 +144,17 @@ def main():
 
         os.system('cls' if os.name == 'nt' else 'clear')
 
-        if choice == '1' or choice == 'tokenizer':
-            display_tokenizer_help()
+        # 数字キーをトピック名に変換
+        topic = NUMBER_TO_TOPIC.get(choice, choice)
+
+        if topic == 'all':
+            # すべてのヘルプを表示
+            for func in TOPIC_FUNCTIONS.values():
+                func()
             input("Press Enter to continue...")
-        elif choice == '2' or choice == 'train':
-            display_train_help()
-            input("Press Enter to continue...")
-        elif choice == '3' or choice == 'predict':
-            display_predict_help()
-            input("Press Enter to continue...")
-        elif choice == '4' or choice == 'augment':
-            display_augment_help()
-            input("Press Enter to continue...")
-        elif choice == '5' or choice == 'all':
-            display_tokenizer_help()
-            display_train_help()
-            display_predict_help()
-            display_augment_help()
+        elif topic in TOPIC_FUNCTIONS:
+            # マッピングされた関数を呼び出し
+            TOPIC_FUNCTIONS[topic]()
             input("Press Enter to continue...")
         else:
             print("無効な選択です。もう一度試してください。")
@@ -158,18 +168,17 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.topic:
-        if args.topic == 'tokenizer':
-            display_tokenizer_help()
-        elif args.topic == 'train':
-            display_train_help()
-        elif args.topic == 'predict':
-            display_predict_help()
-        elif args.topic == 'augment':
-            display_augment_help()
-        elif args.topic == 'all':
-            display_tokenizer_help()
-            display_train_help()
-            display_predict_help()
-            display_augment_help()
+        if args.topic == 'all':
+            # すべてのヘルプを表示
+            for func in TOPIC_FUNCTIONS.values():
+                func()
+        elif args.topic in TOPIC_FUNCTIONS:
+            # マッピングされた関数を呼び出し
+            TOPIC_FUNCTIONS[args.topic]()
+        else:
+            # 未知のトピックに対するフォールバック
+            print(f"エラー: 未知のトピック '{args.topic}' が指定されました。")
+            print(f"利用可能なトピック: {', '.join(TOPIC_FUNCTIONS.keys())}, all")
+            parser.print_help()
     else:
         main()

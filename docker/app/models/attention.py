@@ -109,14 +109,14 @@ class MultiHeadAttention(nn.Module):
             # キャッシュの形状を検証
             # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
             expected_shape = (batch_size, self.num_heads, -1, self.d_k)
-            assert cached_k.dim() == 4, \
-                f"cached_k must be 4-dimensional, got {cached_k.dim()} dimensions"
-            assert cached_k.size(0) == batch_size, \
-                f"cached_k batch size mismatch. Expected {batch_size}, got {cached_k.size(0)}"
-            assert cached_k.size(1) == self.num_heads, \
-                f"cached_k num_heads mismatch. Expected {self.num_heads}, got {cached_k.size(1)}"
-            assert cached_k.size(3) == self.d_k, \
-                f"cached_k d_k mismatch. Expected {self.d_k}, got {cached_k.size(3)}"
+            if cached_k.dim() != 4:
+                raise ValueError(f"cached_k must be 4-dimensional, got {cached_k.dim()} dimensions")
+            if cached_k.size(0) != batch_size:
+                raise ValueError(f"cached_k batch size mismatch. Expected {batch_size}, got {cached_k.size(0)}")
+            if cached_k.size(1) != self.num_heads:
+                raise ValueError(f"cached_k num_heads mismatch. Expected {self.num_heads}, got {cached_k.size(1)}")
+            if cached_k.size(3) != self.d_k:
+                raise ValueError(f"cached_k d_k mismatch. Expected {self.d_k}, got {cached_k.size(3)}")
             k = cached_k
 
         if cached_v is None:
@@ -125,14 +125,14 @@ class MultiHeadAttention(nn.Module):
             # キャッシュの形状を検証
             # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
             expected_shape = (batch_size, self.num_heads, -1, self.d_k)
-            assert cached_v.dim() == 4, \
-                f"cached_v must be 4-dimensional, got {cached_v.dim()} dimensions"
-            assert cached_v.size(0) == batch_size, \
-                f"cached_v batch size mismatch. Expected {batch_size}, got {cached_v.size(0)}"
-            assert cached_v.size(1) == self.num_heads, \
-                f"cached_v num_heads mismatch. Expected {self.num_heads}, got {cached_v.size(1)}"
-            assert cached_v.size(3) == self.d_k, \
-                f"cached_v d_k mismatch. Expected {self.d_k}, got {cached_v.size(3)}"
+            if cached_v.dim() != 4:
+                raise ValueError(f"cached_v must be 4-dimensional, got {cached_v.dim()} dimensions")
+            if cached_v.size(0) != batch_size:
+                raise ValueError(f"cached_v batch size mismatch. Expected {batch_size}, got {cached_v.size(0)}")
+            if cached_v.size(1) != self.num_heads:
+                raise ValueError(f"cached_v num_heads mismatch. Expected {self.num_heads}, got {cached_v.size(1)}")
+            if cached_v.size(3) != self.d_k:
+                raise ValueError(f"cached_v d_k mismatch. Expected {self.d_k}, got {cached_v.size(3)}")
             v = cached_v
 
         # ヘッドに分割

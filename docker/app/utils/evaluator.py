@@ -7,7 +7,6 @@ import time
 import traceback
 import sacrebleu
 from nltk.translate.bleu_score import SmoothingFunction
-from utils.config import CONFIG
 
 def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
     """
@@ -41,7 +40,20 @@ def evaluate(model, valid_loader, criterion, device, config, tgt_vocab=None):
     total_inference_time = 0
 
     # 最大シーケンス長（メモリ節約のため必要に応じて切り捨て）
-    max_length = CONFIG.model_hyperparameters.max_seq_length
+    # 防御的なチェック: model_hyperparameters と max_seq_length の存在を確認
+    if not hasattr(config, 'model_hyperparameters'):
+        raise ValueError(
+            "configにmodel_hyperparameters属性が存在しません。"
+            "設定が正しく初期化されているか確認してください。"
+        )
+    if not hasattr(config.model_hyperparameters, 'max_seq_length'):
+        logging.warning(
+            "config.model_hyperparameters.max_seq_lengthが存在しません。"
+            "デフォルト値512を使用します。"
+        )
+        max_length = 512
+    else:
+        max_length = config.model_hyperparameters.max_seq_length
 
     # 評価する最大バッチ数（性能向上のため削減）
     requested_max = getattr(config.training_config, 'max_eval_batches', None) if hasattr(config, 'training_config') else None
@@ -239,8 +251,6 @@ def decode_for_bleu(output, tgt_output, tgt_vocab, pad_id=None, eos_id=None):
             target_sentences.append([target_clean])  # BLEUの形式に合わせて参照訳をリストのリストに
 
     return target_sentences, predicted_sentences
-
-import sacrebleu
 
 def calculate_sacrebleu(references, hypotheses):
     """

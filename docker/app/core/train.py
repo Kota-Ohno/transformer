@@ -136,6 +136,23 @@ def main(argv=None):
         sp_src_path = os.path.join("models", "sp_src.pth")
         sp_tgt_path = os.path.join("models", "sp_tgt.pth")
 
+        # ファイルの存在チェック
+        if not os.path.exists(sp_src_path):
+            error_msg = (
+                f"エラー: SentencePieceモデルファイルが見つかりません: {sp_src_path}\n"
+                f"--augmentオプションを使用するには、事前に構築されたSentencePieceモデルファイルが必要です。"
+            )
+            logging.error(error_msg)
+            raise RuntimeError(error_msg)
+
+        if not os.path.exists(sp_tgt_path):
+            error_msg = (
+                f"エラー: SentencePieceモデルファイルが見つかりません: {sp_tgt_path}\n"
+                f"--augmentオプションを使用するには、事前に構築されたSentencePieceモデルファイルが必要です。"
+            )
+            logging.error(error_msg)
+            raise RuntimeError(error_msg)
+
         sp_src = torch.load(sp_src_path, weights_only=True)
         sp_tgt = torch.load(sp_tgt_path, weights_only=True)
 

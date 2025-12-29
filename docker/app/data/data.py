@@ -8,6 +8,7 @@ import sentencepiece as spm
 import re
 import logging
 import traceback
+import weakref
 
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
@@ -229,7 +230,11 @@ class Vocabulary:
             self.token2id['<unk>'] = max_id + 1
 
         self.id2token = {v: k for k, v in self.token2id.items()}
-        self.next_id = len(self.token2id)
+        # Compute next_id based on maximum existing ID to avoid collisions with non-contiguous IDs
+        if self.token2id:
+            self.next_id = max(self.token2id.values()) + 1
+        else:
+            self.next_id = 0
 
     def add_token(self, token):
         if token not in self.token2id:
@@ -269,6 +274,9 @@ def build_vocabulary(tokenized_data, special_tokens=None):
 def tokens_to_ids(tokens, vocabulary):
     return [vocabulary[token] for token in tokens]
 
+# モジュールレベルの弱参照キャッシュ（vocabularyオブジェクトがGCされると自動的にエントリが削除される）
+_id_to_token_cache = weakref.WeakKeyDictionary()
+
 def ids_to_tokens(ids, vocabulary):
     # vocabularyがVocabularyクラスのインスタンスである場合
     if hasattr(vocabulary, 'id2token'):
@@ -276,16 +284,10 @@ def ids_to_tokens(ids, vocabulary):
         return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # 逆マッピングをキャッシュするための関数属性を初期化
-        if not hasattr(ids_to_tokens, '_id_to_token_cache'):
-            ids_to_tokens._id_to_token_cache = {}
-
-        # vocabularyオブジェクトのIDをキーとしてキャッシュを管理
-        vocab_id = id(vocabulary)
-
+        # vocabularyオブジェクト自体をキーとしてキャッシュを管理（弱参照）
         # キャッシュに存在しない場合のみ逆マッピングを構築
-        if vocab_id not in ids_to_tokens._id_to_token_cache:
-            ids_to_tokens._id_to_token_cache[vocab_id] = {v: k for k, v in vocabulary.items()}
+        if vocabulary not in _id_to_token_cache:
+            _id_to_token_cache[vocabulary] = {v: k for k, v in vocabulary.items()}
 
-        id_to_token = ids_to_tokens._id_to_token_cache[vocab_id]
+        id_to_token = _id_to_token_cache[vocabulary]
         return [id_to_token.get(id, '<unk>') for id in ids]

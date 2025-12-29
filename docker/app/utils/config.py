@@ -1,7 +1,7 @@
 import torch
 import os
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, is_dataclass
 from typing import List, Any, get_origin
 
 # GPUメモリに基づくモデル設定の自動調整
@@ -24,8 +24,8 @@ class ModelConfig:
         total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3) # GB
 
         if total_memory >= 16:
-            # 16GB以上: 6レイヤー (hidden=512, heads=8)
-            return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            # 16GB以上: より大きなモデル (hidden=768, heads=12, layers=10)
+            return cls(hidden_size=768, num_heads=12, num_layers=10, d_ff=3072, dropout=0.1, max_seq_length=1024, rel_pos_max_distance=256)
         elif total_memory >= 8:
             # 8GB以上16GB未満: 4レイヤー (hidden=512, heads=8)
             return cls(hidden_size=512, num_heads=8, num_layers=4, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
@@ -105,6 +105,12 @@ class GlobalConfig:
 
     def _override_from_env(self, obj: Any, prefix: str):
         for field_name in obj.__dataclass_fields__:
+            # フィールドの現在の値を取得
+            current_value = getattr(obj, field_name, None)
+            # dataclassインスタンスの場合はスキップ（ネストされたdataclassを保護）
+            if is_dataclass(current_value):
+                continue
+
             env_var_name = f"{prefix}{field_name.upper()}"
             env_value = os.getenv(env_var_name)
             if env_value is not None:

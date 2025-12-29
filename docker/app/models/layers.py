@@ -13,11 +13,18 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
 
         # sin/cosペアで同じ周波数項を共有する標準的な実装
-        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) * (-math.log(10000.0) / d_model))
+        # d_modelが奇数の場合、sinとcosのスライス長が異なるため、それぞれに合わせて計算
+        num_sin = (d_model + 1) // 2  # pe[:, 0::2]の要素数
+        num_cos = d_model // 2  # pe[:, 1::2]の要素数
+
+        # sin用の周波数項（num_sin個）
+        div_term_sin = torch.exp(torch.arange(0, num_sin, dtype=torch.float) * (-math.log(10000.0) / d_model))
+        # cos用の周波数項（num_cos個）
+        div_term_cos = torch.exp(torch.arange(0, num_cos, dtype=torch.float) * (-math.log(10000.0) / d_model))
 
         # sin と cos を使って位置エンコーディングを作成
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
+        pe[:, 0::2] = torch.sin(position * div_term_sin)
+        pe[:, 1::2] = torch.cos(position * div_term_cos)
 
         # バッチ次元を追加 [1, max_seq_length, d_model]
         pe = pe.unsqueeze(0)

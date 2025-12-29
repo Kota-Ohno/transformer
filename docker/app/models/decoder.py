@@ -145,7 +145,7 @@ class Decoder(nn.Module):
         """
         # 入力検証：トークンIDの範囲と型をチェック
         # 整数型であることを確認
-        if not x.dtype.is_integer:
+        if torch.is_floating_point(x):
             raise ValueError(
                 f"Token IDs must be integers, but got dtype {x.dtype}. "
                 f"Expected torch.long or torch.int64."
