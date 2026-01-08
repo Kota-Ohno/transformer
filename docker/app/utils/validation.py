@@ -46,7 +46,7 @@ def validate_token_ids(
                 f"Input shape: {x.shape}, vocab_size: {vocab_size}"
             )
     else:
-        # 本番モード: GPU側のブールチェックのみ（同期なし）
+        # 本番モード: GPU側のブールチェック（.item()でGPU→CPU同期が発生）
         is_valid = torch.all((x >= 0) & (x < vocab_size))
         if not is_valid.item():
             # エラー時のみ詳細情報を取得（この時点で同期は発生するが、エラー時のみ）

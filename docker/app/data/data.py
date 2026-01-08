@@ -77,7 +77,21 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
     Args:
         batch: バッチデータのリスト
         pad_token_id: パディングに使用するトークンID（デフォルト: 0）
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+            (X_tensor, tgt_input, tgt_output)のタプル
+
+    Raises:
+        ValueError: バッチが空の場合、またはすべてのサンプルが無効な場合
     """
+    # 空のバッチに対する防御的チェック
+    if not batch:
+        raise ValueError(
+            "Cannot process empty batch. "
+            "Please ensure the dataset contains at least one sample and batch_size > 0."
+        )
+
     # バッチからXとYのペアを取り出す
     X, Y = zip(*batch)
 
@@ -296,12 +310,9 @@ def tokens_to_ids(tokens: List[str], vocabulary: Vocabulary) -> List[int]:
     return [vocabulary[token] for token in tokens]
 
 # モジュールレベルのキャッシュ
-# WeakKeyDictionary: 弱参照可能なVocabularyオブジェクト用（GC時に自動削除）
-_id_to_token_cache_weak = weakref.WeakKeyDictionary()
 # WeakKeyDictionary: 組み込みdict語彙用（vocabularyオブジェクト自体をキーとして使用、GC時に自動削除）
-# dict語彙用のキャッシュ（id()をキーとして使用）
-# 注意: 弱参照ではないため、clear_dict_vocab_cache()で手動クリアが必要
-_dict_vocab_cache: Dict[int, Dict[int, str]] = {}
+# vocabularyオブジェクトがGCされると、対応するキャッシュエントリも自動的に削除される
+_dict_vocab_cache: weakref.WeakKeyDictionary[Any, Dict[int, str]] = weakref.WeakKeyDictionary()
 _dict_vocab_cache_lock = threading.Lock()
 
 def clear_dict_vocab_cache() -> None:
@@ -317,11 +328,11 @@ def ids_to_tokens(ids: List[int], vocabulary: Any) -> List[str]:
         return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # vocabularyオブジェクトのid()をキーとしてキャッシュを管理
-        vocab_id = id(vocabulary)
+        # vocabularyオブジェクト自体をキーとしてキャッシュを管理（弱参照）
+        # vocabularyオブジェクトがGCされると、対応するキャッシュエントリも自動的に削除される
         with _dict_vocab_cache_lock:
             # キャッシュに存在しない場合のみ逆マッピングを構築
-            if vocab_id not in _dict_vocab_cache:
-                _dict_vocab_cache[vocab_id] = {v: k for k, v in vocabulary.items()}
-            id_to_token = _dict_vocab_cache[vocab_id]
+            if vocabulary not in _dict_vocab_cache:
+                _dict_vocab_cache[vocabulary] = {v: k for k, v in vocabulary.items()}
+            id_to_token = _dict_vocab_cache[vocabulary]
         return [id_to_token.get(id, '<unk>') for id in ids]

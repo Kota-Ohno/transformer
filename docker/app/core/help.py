@@ -9,13 +9,21 @@ import argparse
 import time
 from wcwidth import wcswidth
 
-def print_header(title):
-    """見出しを表示"""
+def print_header(title: str, width: int | None = None) -> None:
+    """見出しを表示
+
+    Args:
+        title: 表示する見出しテキスト
+        width: 表示幅（指定しない場合はtitleの幅に基づいて自動計算）
+    """
     # 表示幅を計算（マルチバイト文字に対応）
-    display_width = wcswidth(title)
-    if display_width < 0:
-        # wcswidthが負の値を返した場合はlen()にフォールバック
-        display_width = len(title)
+    if width is None:
+        display_width = wcswidth(title)
+        if display_width < 0:
+            # wcswidthが負の値を返した場合はlen()にフォールバック
+            display_width = len(title)
+    else:
+        display_width = width
     line = "=" * display_width
     print(f"\n{line}")
     print(title)
@@ -139,9 +147,7 @@ MAIN_MENU = """
 def main():
     while True:
         os.system('cls' if os.name == 'nt' else 'clear')
-        print("=" * 80)
-        print("Transformer翻訳モデル - 対話型ヘルプ")
-        print("=" * 80)
+        print_header("Transformer翻訳モデル - 対話型ヘルプ")
 
         print(MAIN_MENU)
         choice = input().strip().lower()

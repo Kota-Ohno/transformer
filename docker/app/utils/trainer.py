@@ -185,16 +185,28 @@ class Trainer:
                 if accumulation_steps > 1:
                     loss = loss / accumulation_steps
 
-            self.scaler.scale(loss).backward()
+            # 勾配スケーラーを使用する場合としない場合で処理を分岐
+            if self.scaler is not None:
+                self.scaler.scale(loss).backward()
 
-            if (i + 1) % accumulation_steps == 0 or (i + 1) == total_batches:
-                self.scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
-                self.scaler.step(self.optimizer)
-                self.scaler.update()
-                if hasattr(self, "scheduler") and self.scheduler is not None:
-                    self.scheduler.step()
-                self.optimizer.zero_grad(set_to_none=True)
+                if (i + 1) % accumulation_steps == 0 or (i + 1) == total_batches:
+                    self.scaler.unscale_(self.optimizer)
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    if hasattr(self, "scheduler") and self.scheduler is not None:
+                        self.scheduler.step()
+                    self.optimizer.zero_grad(set_to_none=True)
+            else:
+                # CPU環境またはGradScalerが利用できない場合
+                loss.backward()
+
+                if (i + 1) % accumulation_steps == 0 or (i + 1) == total_batches:
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
+                    self.optimizer.step()
+                    if hasattr(self, "scheduler") and self.scheduler is not None:
+                        self.scheduler.step()
+                    self.optimizer.zero_grad(set_to_none=True)
 
             epoch_loss += loss.item() * accumulation_steps
 
@@ -388,7 +400,11 @@ class Trainer:
                     epoch_completed = True
 
                     if self.device.type == 'cuda':
-                        torch.cuda.empty_cache()
+                        try:
+                            if torch.cuda.is_available():
+                                torch.cuda.empty_cache()
+                        except (RuntimeError, AssertionError) as e:
+                            logging.warning(f"CUDAキャッシュの解放に失敗しました: {e}")
 
                 except KeyboardInterrupt:
                     last_epoch = epoch + 1

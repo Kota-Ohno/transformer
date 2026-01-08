@@ -41,11 +41,8 @@ class ColoredFormatter(logging.Formatter):
     def format(self, record):
         if COLORAMA_AVAILABLE and colorama:
             color = self.LEVEL_COLORS.get(record.levelno, colorama.Fore.RESET)
-            record_copy = copy.copy(record)
-            # levelnameのみを色付きに設定（msgとargsは変更しない）
-            record_copy.levelname = f"{color}{record.levelname}{colorama.Fore.RESET}"
             # 完全にフォーマットされたメッセージを取得
-            formatted_message = super().format(record_copy)
+            formatted_message = super().format(record)
             # フォーマット済みの文字列全体に色を適用
             return f"{color}{formatted_message}{colorama.Fore.RESET}"
         else:
@@ -72,45 +69,34 @@ def setup_logging(
     root_logger = logging.getLogger()
     root_logger.setLevel(level)
 
-    # 既存のコンソールハンドラーをチェック・削除
+    # coloramaが利用可能で、カラー出力が有効な場合はColoredFormatterを使用
+    should_use_colored = use_colored_output and COLORAMA_AVAILABLE
+    if should_use_colored:
+        colorama.init()
+        desired_formatter = ColoredFormatter(format_string)
+    else:
+        desired_formatter = logging.Formatter(format_string)
+
+    # 既存のstdoutハンドラーを検索（ColoredFormatterを持つもののみ）
     has_console_handler = False
-    if use_colored_output:
-        if COLORAMA_AVAILABLE:
-            colorama.init()
-            formatter = ColoredFormatter(format_string)
+    for handler in root_logger.handlers:
+        # StreamHandlerでsys.stdoutを使用し、ColoredFormatterを持つハンドラーを検出
+        if isinstance(handler, logging.StreamHandler):
+            if handler.stream is sys.stdout and isinstance(handler.formatter, ColoredFormatter):
+                has_console_handler = True
+                # 既存のハンドラーのフォーマット文字列を確認
+                current_fmt = getattr(handler.formatter, '_fmt', None)
+                desired_fmt = getattr(desired_formatter, '_fmt', None)
+                if current_fmt == desired_fmt:
+                    # 既に適切なフォーマッターが設定されている場合はスキップ
+                    return
+                break
 
-            # 既存のstdoutハンドラーを削除し、ColoredFormatterの検出を行う
-            for handler in root_logger.handlers[:]:
-                if isinstance(handler, logging.StreamHandler):
-                    if handler.stream is sys.stdout:
-                        if isinstance(handler.formatter, ColoredFormatter):
-                            has_console_handler = True
-                        root_logger.removeHandler(handler)
-
-            # 新しいハンドラーを作成して追加
-            console = logging.StreamHandler(sys.stdout)
-            console.setLevel(level)
-            console.setFormatter(formatter)
-            root_logger.addHandler(console)
-        else:
-            # coloramaがインストールされていない場合は通常のフォーマッターを使用
-            use_colored_output = False
-
-    if not use_colored_output:
-        formatter = logging.Formatter(format_string)
-
-        # 既存のstdoutハンドラーを削除し、ColoredFormatterの検出を行う
-        for handler in root_logger.handlers[:]:
-            if isinstance(handler, logging.StreamHandler):
-                if handler.stream is sys.stdout:
-                    if isinstance(handler.formatter, ColoredFormatter):
-                        has_console_handler = True
-                    root_logger.removeHandler(handler)
-
-        # 新しいハンドラーを作成して追加
+    # 既存のColoredFormatterを持つハンドラーが存在しない場合のみ、新しいハンドラーを追加
+    if not has_console_handler:
         console = logging.StreamHandler(sys.stdout)
         console.setLevel(level)
-        console.setFormatter(formatter)
+        console.setFormatter(desired_formatter)
         root_logger.addHandler(console)
 
 

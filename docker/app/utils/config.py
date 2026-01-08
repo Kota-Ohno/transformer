@@ -225,7 +225,6 @@ class GlobalConfig:
 
         # 型アノテーションが複雑な型（List, Dict等）の場合
         if origin is not None:
-        if origin is not None:
             if origin is list:
                 # List型の場合
                 if isinstance(value, list):

@@ -36,23 +36,26 @@ class PositionalEncoding(nn.Module):
         # モジュールのバッファとして登録 (パラメータではない)
         self.register_buffer('pe', pe)
 
-    def forward(self, x):
+    def forward(self, x, offset=0):
         """
         入力テンソルに位置エンコーディングを加算
 
         Args:
             x: 入力テンソル [batch_size, seq_len, d_model]
+            offset: 位置エンコーディングの開始オフセット（デフォルト: 0）
+                    インクリメンタルデコーディング時に使用
 
         Returns:
             位置情報が加算されたテンソル [batch_size, seq_len, d_model]
         """
         seq_len = x.size(1)
-        if seq_len > self.pe.size(1):
+        end_pos = offset + seq_len
+        if end_pos > self.pe.size(1):
             raise ValueError(
-                f"入力シーケンス長 ({seq_len}) が最大シーケンス長 ({self.pe.size(1)}) を超えています"
+                f"位置エンコーディングの範囲 ({offset} から {end_pos}) が最大シーケンス長 ({self.pe.size(1)}) を超えています"
             )
-        # 入力シーケンス長に合わせて位置エンコーディングを加算
-        x = x + self.pe[:, :seq_len]
+        # オフセットを考慮して位置エンコーディングを加算
+        x = x + self.pe[:, offset:end_pos]
         return x
 
 class FeedForward(nn.Module):

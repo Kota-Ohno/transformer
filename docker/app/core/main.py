@@ -84,18 +84,24 @@ def check_gpu_environment():
     logging.info("環境チェック中...")
 
     if torch.cuda.is_available():
-        device_count = torch.cuda.device_count()
-        logging.info(f"GPU検出: {device_count}台のGPUが利用可能")
+        try:
+            device_count = torch.cuda.device_count()
+            logging.info(f"GPU検出: {device_count}台のGPUが利用可能")
 
-        for i in range(device_count):
-            device_props = torch.cuda.get_device_properties(i)
-            total_memory_gb = device_props.total_memory / (1024 ** 3)
-            logging.info(f"GPU {i}: {device_props.name}, メモリ: {total_memory_gb:.2f} GB")
+            for i in range(device_count):
+                try:
+                    device_props = torch.cuda.get_device_properties(i)
+                    total_memory_gb = device_props.total_memory / (1024 ** 3)
+                    logging.info(f"GPU {i}: {device_props.name}, メモリ: {total_memory_gb:.2f} GB")
+                except (RuntimeError, AssertionError) as e:
+                    logging.warning(f"GPU {i} の情報取得に失敗しました: {e}")
 
-        # PyTorchバージョンチェック
-        cuda_version = torch.version.cuda
-        cuda_version_str = cuda_version if cuda_version is not None else "N/A (PyTorch built without CUDA)"
-        logging.info(f"PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version_str}")
+            # PyTorchバージョンチェック
+            cuda_version = torch.version.cuda
+            cuda_version_str = cuda_version if cuda_version is not None else "N/A (PyTorch built without CUDA)"
+            logging.info(f"PyTorchバージョン: {torch.__version__}, CUDA: {cuda_version_str}")
+        except (RuntimeError, AssertionError) as e:
+            logging.warning(f"CUDA環境の確認中にエラーが発生しました: {e}。CPUで実行します。")
     else:
         logging.warning("利用可能なGPUがありません - CPUで実行します")
 

@@ -65,7 +65,7 @@ def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_
     # 注意: weights_only=Trueにより、信頼できないpickleデータの逆シリアライゼーションを防止
     # モデルファイルは信頼できるソース（自分たちが保存したモデル）からのみ読み込むこと
     logging.info(f"モデルをロード中: {model_path}")
-    checkpoint = torch.load(model_path, map_location=CONFIG.device, weights_only=True)
+    checkpoint = torch.load(model_path, map_location=CONFIG.get_device(), weights_only=True)
 
     # 保存されたモデル設定を読み込む
     # 注意: model_configは信頼できるソース（自分たちが保存したモデル）からのみ読み込まれる
@@ -110,8 +110,12 @@ def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_
         else:
             # 従来の形式（モデルの状態辞書が直接保存されている場合）
             model.load_state_dict(checkpoint)
-    except Exception:
+    except RuntimeError as e:
         logging.error("モデルのアーキテクチャと保存されたモデルの設定が一致していない可能性があります。")
+        logging.error(f"詳細: {e}")
+        raise
+    except Exception as e:
+        logging.error(f"モデルのロード中に予期しないエラーが発生しました: {e}")
         raise
 
     model.eval()

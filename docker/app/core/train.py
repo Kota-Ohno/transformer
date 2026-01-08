@@ -74,16 +74,25 @@ def _check_and_setup_gpu(args: argparse.Namespace) -> torch.device:
     Returns:
         使用するデバイス
     """
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # CONFIGからデバイスを取得（フォールバック処理済み）
+    device = CONFIG.get_device()
     logging.info(f"Using device: {device}")
 
     # GPUメモリチェック（fast-mode設定の前に実行）
     if device.type == 'cuda':
-        gpu_props = torch.cuda.get_device_properties(0)
-        # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
-        if gpu_props.total_memory < VRAM_THRESHOLD_8GB * BYTES_PER_MB:
-            logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
-            args.fast = True
+        try:
+            if not torch.cuda.is_available():
+                logging.warning("CUDAが利用できないため、CPUにフォールバックします。")
+                device = torch.device('cpu')
+            else:
+                gpu_props = torch.cuda.get_device_properties(0)
+                # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
+                if gpu_props.total_memory < VRAM_THRESHOLD_8GB * BYTES_PER_MB:
+                    logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
+                    args.fast = True
+        except (RuntimeError, AssertionError) as e:
+            logging.warning(f"CUDAデバイスへのアクセスに失敗しました: {e}。CPUにフォールバックします。")
+            device = torch.device('cpu')
 
     return device
 
@@ -210,9 +219,17 @@ def _create_data_loaders(
     """
     # GPU情報のログ記録とメモリキャッシュのクリア
     if device.type == 'cuda':
-        gpu_props = torch.cuda.get_device_properties(0)
-        logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / BYTES_PER_MB:.0f}MB")
-        torch.cuda.empty_cache()
+        try:
+            if torch.cuda.is_available():
+                gpu_props = torch.cuda.get_device_properties(0)
+                logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / BYTES_PER_MB:.0f}MB")
+                torch.cuda.empty_cache()
+            else:
+                logging.warning("CUDAが利用できないため、CPUにフォールバックします。")
+                device = torch.device('cpu')
+        except (RuntimeError, AssertionError) as e:
+            logging.warning(f"CUDAデバイスへのアクセスに失敗しました: {e}。CPUにフォールバックします。")
+            device = torch.device('cpu')
 
     # データセットとデータローダーの作成
     train_dataset = set_data(train_token_ids, train_token_ids)
@@ -224,11 +241,17 @@ def _create_data_loaders(
 
     # 実際のバッチサイズはGPUメモリによって調整可能
     if device.type == 'cuda':
-        vram_mb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_MB
-        if vram_mb < VRAM_THRESHOLD_4GB:
-            adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_SMALL_VRAM)
-        elif vram_mb < VRAM_THRESHOLD_8GB:
-            adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_MEDIUM_VRAM)
+        try:
+            if torch.cuda.is_available():
+                vram_mb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_MB
+                if vram_mb < VRAM_THRESHOLD_4GB:
+                    adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_SMALL_VRAM)
+                elif vram_mb < VRAM_THRESHOLD_8GB:
+                    adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_MEDIUM_VRAM)
+            else:
+                logging.warning("CUDAが利用できないため、CPUモードで続行します。")
+        except (RuntimeError, AssertionError) as e:
+            logging.warning(f"GPUメモリ情報の取得に失敗しました: {e}。デフォルトのバッチサイズを使用します。")
 
     logging.info(f"バッチサイズ: {adjusted_batch_size} (元の設定: {batch_size})")
 
@@ -359,7 +382,11 @@ def _initialize_model(
 
                 with torch.no_grad():
                     optimized_model(dummy_src, dummy_tgt[:, :-1])
-                    torch.cuda.synchronize()
+                    if device.type == 'cuda' and torch.cuda.is_available():
+                        try:
+                            torch.cuda.synchronize()
+                        except (RuntimeError, AssertionError):
+                            pass  # CUDA同期に失敗しても続行
 
                 model = optimized_model
                 logging.info("JITコンパイルのウォームアップ完了")
@@ -374,8 +401,9 @@ def _initialize_model(
 def _setup_training_components(
     model: nn.Module,
     args: argparse.Namespace,
-    train_loader: torch.utils.data.DataLoader
-) -> Tuple[optim.Optimizer, nn.Module, WarmupScheduler, torch.cuda.amp.GradScaler]:
+    train_loader: torch.utils.data.DataLoader,
+    device: torch.device
+) -> Tuple[optim.Optimizer, nn.Module, WarmupScheduler, Optional[torch.cuda.amp.GradScaler]]:
     """
     トレーニングに必要なコンポーネントを設定します。
 
@@ -383,6 +411,7 @@ def _setup_training_components(
         model: モデル
         args: コマンドライン引数オブジェクト
         train_loader: トレーニングデータローダー
+        device: 使用するデバイス
 
     Returns:
         (optimizer, criterion, scheduler, scaler)のタプル
@@ -399,8 +428,15 @@ def _setup_training_components(
         eps=1e-8
     )
 
-    # 勾配スケーラーの設定
-    scaler = torch.cuda.amp.GradScaler()
+    # 勾配スケーラーの設定（CUDA環境でのみ使用）
+    if device.type == 'cuda' and torch.cuda.is_available():
+        try:
+            scaler = torch.cuda.amp.GradScaler()
+        except (RuntimeError, AssertionError) as e:
+            logging.warning(f"GradScalerの作成に失敗しました: {e}。CPUモードで続行します。")
+            scaler = None
+    else:
+        scaler = None
 
     # 総ステップ数を計算（勾配蓄積を考慮、最低1ステップを保証）
     grad_accum = CONFIG.training_config.gradient_accumulation_steps
@@ -472,7 +508,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     model = _initialize_model(input_vocab, output_vocab, device)
 
     # トレーニングコンポーネントの設定
-    optimizer, criterion, scheduler, scaler = _setup_training_components(model, args, train_loader)
+    optimizer, criterion, scheduler, scaler = _setup_training_components(model, args, train_loader, device)
 
     # Trainerクラスのインスタンスを作成し、トレーニングを開始
     trainer = Trainer(

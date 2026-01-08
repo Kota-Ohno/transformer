@@ -2,20 +2,38 @@ import torch
 import nltk
 import os
 import logging
-from typing import Dict, Any
+import traceback
+from typing import Dict, Any, Set, Optional
 
 # 評価指標用のダウンロード
-def download_nltk_resources():
-    """必要なnltkリソースをダウンロードします。環境変数でスキップ可能。"""
+def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> None:
+    """必要なnltkリソースをダウンロードします。環境変数でスキップ可能。
+
+    Args:
+        critical_resources: 重要なリソースのセット。これらのダウンロードに失敗した場合は
+            例外を再発生させます。デフォルトは{'punkt'}。
+
+    Raises:
+        Exception: 重要なリソースのダウンロードに失敗した場合。
+    """
     # 環境変数によるスキップ
     if os.environ.get('SKIP_NLTK_DOWNLOAD') == '1':
         logging.info("環境変数の設定によりNLTKリソースのダウンロードをスキップします")
         return
 
+    if critical_resources is None:
+        critical_resources = {'punkt'}
+
     try:
 
         # カスタムダウンロードディレクトリを設定（Docker環境に依存しない場所）
-        nltk_data_dir = os.path.join(os.getcwd(), "nltk_data")
+        # 環境変数NLTK_DATA_DIRから読み取る、フォールバックとしてutils.pyのディレクトリ + "nltk_data"
+        nltk_data_dir = os.environ.get(
+            'NLTK_DATA_DIR',
+            os.path.join(os.path.dirname(__file__), "..", "nltk_data")
+        )
+        # 相対パスの場合は正規化
+        nltk_data_dir = os.path.abspath(nltk_data_dir)
         os.makedirs(nltk_data_dir, exist_ok=True)
 
         # nltk.data.pathの先頭にカスタムディレクトリを追加
@@ -31,11 +49,19 @@ def download_nltk_resources():
                 nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
                 logging.info(f"nltk resource {resource} のダウンロードが完了しました")
             except Exception as e:
-                logging.error(f"{resource} のダウンロード中にエラー: {e}")
-                # ダウンロードに失敗しても続行を試みる
+                exception_traceback = traceback.format_exc()
+                logging.warning(
+                    f"nltk resource '{resource}' のダウンロードに失敗しました: {e}\n"
+                    f"完全な例外情報:\n{exception_traceback}"
+                )
+                # 重要なリソースの場合は例外を再発生させて早期失敗
+                if resource in critical_resources:
+                    raise
+                # 非重要なリソースの場合は続行
 
     except Exception as e:
         logging.error(f"nltkリソースのダウンロード中にエラーが発生しました: {e}")
+        raise
 
 # --- マスク生成関数 ---
 def create_padding_mask(seq: torch.Tensor, pad_idx: int) -> torch.Tensor:
