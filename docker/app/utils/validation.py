@@ -55,26 +55,19 @@ def validate_token_ids(
 
             # 無効な値の詳細情報を取得（デバッグ用）
             invalid_mask = (x < 0) | (x >= vocab_size)
-            if invalid_mask.any():
-                invalid_indices = torch.nonzero(invalid_mask, as_tuple=False)
-                invalid_values = x[invalid_mask]
-                num_invalid = invalid_mask.sum().item()
+            invalid_indices = torch.nonzero(invalid_mask, as_tuple=False)
+            invalid_values = x[invalid_mask]
+            num_invalid = invalid_mask.sum().item()
 
-                # 最初の数個の無効なインデックスと値を取得（デバッグ用）
-                sample_indices = invalid_indices[:10].cpu().tolist()
-                sample_values = invalid_values[:10].cpu().tolist()
+            # 最初の数個の無効なインデックスと値を取得（デバッグ用）
+            sample_indices = invalid_indices[:10].cpu().tolist()
+            sample_values = invalid_values[:10].cpu().tolist()
 
-                raise ValueError(
-                    f"Invalid token IDs detected in {tensor_name}: {num_invalid} out-of-range values found. "
-                    f"Valid range is [0, {vocab_size - 1}], "
-                    f"but found values in range [{x_min}, {x_max}]. "
-                    f"Input shape: {x.shape}, vocab_size: {vocab_size}. "
-                    f"Sample invalid positions (batch_idx, seq_idx): {sample_indices}, "
-                    f"with values: {sample_values}"
-                )
-            else:
-                raise ValueError(
-                    f"Token indices in {tensor_name} out of valid range [0, {vocab_size - 1}]. "
-                    f"Found range: [{x_min}, {x_max}]. "
-                    f"Input shape: {x.shape}, vocab_size: {vocab_size}"
-                )
+            raise ValueError(
+                f"Invalid token IDs detected in {tensor_name}: {num_invalid} out-of-range values found. "
+                f"Valid range is [0, {vocab_size - 1}], "
+                f"but found values in range [{x_min}, {x_max}]. "
+                f"Input shape: {x.shape}, vocab_size: {vocab_size}. "
+                f"Sample invalid positions (batch_idx, seq_idx): {sample_indices}, "
+                f"with values: {sample_values}"
+            )

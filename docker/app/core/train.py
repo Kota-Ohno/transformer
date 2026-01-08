@@ -4,7 +4,6 @@ import torch.optim as optim
 import os
 import argparse
 import logging
-import sys
 from typing import Optional, List, Tuple, Dict, Any
 from packaging import version
 from data.data import create_data_loader, set_data, collate_fn
@@ -133,7 +132,7 @@ def _load_and_prepare_data(
         (train_token_ids, val_token_ids, input_vocab, output_vocab)のタプル
 
     Raises:
-        SystemExit: データファイルが見つからない場合
+        ValueError: データファイルの読み込みに失敗した場合
         RuntimeError: SentencePieceモデルファイルが見つからない場合
     """
     # NLTK リソースのダウンロード
@@ -146,8 +145,9 @@ def _load_and_prepare_data(
     # データの読み込み
     train_token_ids, val_token_ids = load_tokenized_data(train_data_path), load_tokenized_data(val_data_path)
     if train_token_ids is None or val_token_ids is None:
-        logging.error("トークナイズ済みデータファイルが見つかりません。先にtext_tokenizer.pyを実行してください。")
-        sys.exit(1)
+        error_msg = "トークナイズ済みデータファイルが見つかりません。先にtext_tokenizer.pyを実行してください。"
+        logging.error(error_msg)
+        raise ValueError(error_msg)
 
     # データサンプル数の制限（高速実験用）
     if args.limit_samples > 0 and len(train_token_ids) > args.limit_samples:
@@ -203,7 +203,7 @@ def _create_data_loaders(
     args: argparse.Namespace,
     device: torch.device,
     output_vocab: Any = None
-) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int]:
+) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int, torch.device]:
     """
     データローダーを作成します。
 
@@ -215,7 +215,7 @@ def _create_data_loaders(
         output_vocab: 出力側のvocabulary（パディングトークンIDを取得するために使用）
 
     Returns:
-        (train_loader, val_loader, adjusted_batch_size)のタプル
+        (train_loader, val_loader, adjusted_batch_size, device)のタプル
     """
     # GPU情報のログ記録とメモリキャッシュのクリア
     if device.type == 'cuda':
@@ -256,9 +256,10 @@ def _create_data_loaders(
     logging.info(f"バッチサイズ: {adjusted_batch_size} (元の設定: {batch_size})")
 
     # 勾配蓄積を使用する場合は実効バッチサイズを表示
-    effective_batch_size = adjusted_batch_size * CONFIG.training_config.gradient_accumulation_steps
-    if CONFIG.training_config.gradient_accumulation_steps > 1:
-        logging.info(f"勾配蓄積ステップ数: {CONFIG.training_config.gradient_accumulation_steps}, 実効バッチサイズ: {effective_batch_size}")
+    grad_accum_steps = args.grad_accum_steps
+    effective_batch_size = adjusted_batch_size * grad_accum_steps
+    if grad_accum_steps > 1:
+        logging.info(f"勾配蓄積ステップ数: {grad_accum_steps}, 実効バッチサイズ: {effective_batch_size}")
 
     # パディングトークンIDを取得
     if output_vocab is not None:
@@ -299,7 +300,7 @@ def _create_data_loaders(
         pin_memory=pin_memory
     )
 
-    return train_loader, val_loader, adjusted_batch_size
+    return train_loader, val_loader, adjusted_batch_size, device
 
 
 def _initialize_model(
@@ -421,9 +422,11 @@ def _setup_training_components(
 
     # 損失関数とオプティマイザの設定
     criterion = nn.CrossEntropyLoss(ignore_index=tgt_pad_idx)
+    # 学習率はCLI引数を優先し、Noneの場合はCONFIGから取得
+    learning_rate = args.learning_rate if args.learning_rate is not None else CONFIG.training_config.learning_rate
     optimizer = optim.AdamW(
         model.parameters(),
-        lr=CONFIG.training_config.learning_rate,
+        lr=learning_rate,
         weight_decay=CONFIG.training_config.weight_decay if hasattr(CONFIG.training_config, 'weight_decay') else 0.01,
         eps=1e-8
     )
@@ -477,6 +480,19 @@ def main(argv: Optional[List[str]] = None) -> None:
     # 引数の解析
     args = _parse_args(argv)
 
+    # 環境変数から設定を読み取る（main.pyから渡された設定）
+    if os.environ.get('TRANSFORMER_FAST_MODE') == '1' and not args.fast:
+        args.fast = True
+        logging.info("環境変数から高速モードを有効化しました")
+
+    limit_samples_env = os.environ.get('TRANSFORMER_LIMIT_SAMPLES')
+    if limit_samples_env and args.limit_samples == 0:
+        try:
+            args.limit_samples = int(limit_samples_env)
+            logging.info(f"環境変数からサンプル数制限を設定しました: {args.limit_samples}")
+        except ValueError:
+            logging.warning(f"無効なTRANSFORMER_LIMIT_SAMPLES値: {limit_samples_env}")
+
     # GPU環境のチェックと設定
     device = _check_and_setup_gpu(args)
 
@@ -500,7 +516,7 @@ def main(argv: Optional[List[str]] = None) -> None:
     train_token_ids, val_token_ids, input_vocab, output_vocab = _load_and_prepare_data(args)
 
     # データローダーの作成
-    train_loader, val_loader, adjusted_batch_size = _create_data_loaders(
+    train_loader, val_loader, adjusted_batch_size, device = _create_data_loaders(
         train_token_ids, val_token_ids, args, device, output_vocab
     )
 

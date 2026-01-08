@@ -54,7 +54,7 @@ DEFAULT_PAD_TOKEN_ID: Final[int] = 0  # <pad>
 DEFAULT_UNK_TOKEN_ID: Final[int] = 1  # <unk>
 
 # 特殊トークンセット
-SPECIAL_TOKENS: Final[frozenset[str]] = frozenset({'<pad>', '<unk>', '<s>', '</s>', '<bos>', '<eos>'})
+SPECIAL_TOKENS: Final[frozenset[str]] = frozenset({'<pad>', '<unk>', '<s>', '</s>'})
 
 # データローダー関連
 DEFAULT_PREFETCH_FACTOR: Final[int] = 2

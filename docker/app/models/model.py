@@ -94,7 +94,6 @@ class TranslationModel(nn.Module):
             with torch.no_grad():
                 for _ in range(max_length):
                     # 現在のターゲットシーケンスのマスクを作成
-                    tgt_len = tgt.size(1)
                     tgt_mask = self.make_tgt_mask(tgt)
 
                     # デコーダーで次のトークンを予測

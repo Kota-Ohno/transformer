@@ -4,6 +4,7 @@ import os
 import logging
 import traceback
 from typing import Dict, Any, Set, Optional
+from . import constants
 
 # 評価指標用のダウンロード
 def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> None:
@@ -160,7 +161,6 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
             ids = ids.cpu().tolist()
 
         # IDから単語に変換
-        special_tokens = {'<pad>', '<unk>', '<s>', '</s>', '<bos>', '<eos>'}
         words = []
         for idx in ids:
             # 辞書にない場合はスキップ
@@ -168,7 +168,7 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
                 continue
             word = id2word[idx]
             # 特殊トークンをスキップする場合
-            if skip_special and word in special_tokens:
+            if skip_special and word in constants.SPECIAL_TOKENS:
                 continue
             words.append(word)
 

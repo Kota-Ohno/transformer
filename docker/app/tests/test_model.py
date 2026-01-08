@@ -37,3 +37,15 @@ def test_create_transformer_model():
     assert model.decoder.d_model == hidden_size
     assert len(model.decoder.layers) == num_layers
     assert model.decoder.layers[0].self_attn.num_heads == num_heads
+
+    # デコーダーのクロスアテンション（エンコーダ-デコーダアテンション）の確認
+    assert hasattr(model.decoder.layers[0], 'encoder_attn'), "Decoder layer should have encoder_attn (cross-attention)"
+    assert model.decoder.layers[0].encoder_attn.num_heads == num_heads, "Cross-attention num_heads should match"
+
+    # 埋め込み次元がhidden_sizeと一致することを確認
+    assert model.encoder.embedding.embedding_dim == hidden_size, "Encoder embedding_dim should match hidden_size"
+    assert model.decoder.embedding.embedding_dim == hidden_size, "Decoder embedding_dim should match hidden_size"
+
+    # フィードフォワード層のd_ffが正しく設定されていることを確認
+    assert model.encoder.layers[0].feed_forward.linear1.out_features == d_ff, "Encoder feed-forward d_ff should match"
+    assert model.decoder.layers[0].feed_forward.linear1.out_features == d_ff, "Decoder feed-forward d_ff should match"

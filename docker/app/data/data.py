@@ -7,7 +7,6 @@ import os
 import re
 import logging
 import traceback
-import weakref
 import threading
 from typing import List, Tuple, Optional, Callable, Any, Dict
 
@@ -309,30 +308,22 @@ def build_vocabulary(tokenized_data: List[List[str]], special_tokens: Optional[D
 def tokens_to_ids(tokens: List[str], vocabulary: Vocabulary) -> List[int]:
     return [vocabulary[token] for token in tokens]
 
-# モジュールレベルのキャッシュ
-# WeakKeyDictionary: 組み込みdict語彙用（vocabularyオブジェクト自体をキーとして使用、GC時に自動削除）
-# vocabularyオブジェクトがGCされると、対応するキャッシュエントリも自動的に削除される
-_dict_vocab_cache: weakref.WeakKeyDictionary[Any, Dict[int, str]] = weakref.WeakKeyDictionary()
-_dict_vocab_cache_lock = threading.Lock()
-
-def clear_dict_vocab_cache() -> None:
-    """組み込みdict語彙キャッシュをクリアする（メモリ管理用）"""
-    global _dict_vocab_cache
-    with _dict_vocab_cache_lock:
-        _dict_vocab_cache.clear()
-
 def ids_to_tokens(ids: List[int], vocabulary: Any) -> List[str]:
+    """IDのリストをトークンのリストに変換する。
+
+    Args:
+        ids: トークンIDのリスト。
+        vocabulary: Vocabularyクラスのインスタンスまたは辞書（token -> idのマッピング）。
+
+    Returns:
+        トークンのリスト。存在しないIDの場合は'<unk>'を返す。
+    """
     # vocabularyがVocabularyクラスのインスタンスである場合（弱参照可能）
     if hasattr(vocabulary, 'id2token'):
         # 安全なルックアップを使用（存在しないIDの場合は'<unk>'を返す）
         return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # vocabularyオブジェクト自体をキーとしてキャッシュを管理（弱参照）
-        # vocabularyオブジェクトがGCされると、対応するキャッシュエントリも自動的に削除される
-        with _dict_vocab_cache_lock:
-            # キャッシュに存在しない場合のみ逆マッピングを構築
-            if vocabulary not in _dict_vocab_cache:
-                _dict_vocab_cache[vocabulary] = {v: k for k, v in vocabulary.items()}
-            id_to_token = _dict_vocab_cache[vocabulary]
+        # 辞書の場合は毎回逆マッピングを構築（キャッシュは呼び出し側で管理）
+        id_to_token = {v: k for k, v in vocabulary.items()}
         return [id_to_token.get(id, '<unk>') for id in ids]

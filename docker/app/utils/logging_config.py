@@ -77,27 +77,19 @@ def setup_logging(
     else:
         desired_formatter = logging.Formatter(format_string)
 
-    # 既存のstdoutハンドラーを検索（ColoredFormatterを持つもののみ）
-    has_console_handler = False
+    # 既存のstdoutハンドラーを検索
     for handler in root_logger.handlers:
-        # StreamHandlerでsys.stdoutを使用し、ColoredFormatterを持つハンドラーを検出
-        if isinstance(handler, logging.StreamHandler):
-            if handler.stream is sys.stdout and isinstance(handler.formatter, ColoredFormatter):
-                has_console_handler = True
-                # 既存のハンドラーのフォーマット文字列を確認
-                current_fmt = getattr(handler.formatter, '_fmt', None)
-                desired_fmt = getattr(desired_formatter, '_fmt', None)
-                if current_fmt == desired_fmt:
-                    # 既に適切なフォーマッターが設定されている場合はスキップ
-                    return
-                break
+        if isinstance(handler, logging.StreamHandler) and handler.stream is sys.stdout:
+            # 既存のハンドラーのレベルとフォーマッターを更新
+            handler.setLevel(level)
+            handler.setFormatter(desired_formatter)
+            return
 
-    # 既存のColoredFormatterを持つハンドラーが存在しない場合のみ、新しいハンドラーを追加
-    if not has_console_handler:
-        console = logging.StreamHandler(sys.stdout)
-        console.setLevel(level)
-        console.setFormatter(desired_formatter)
-        root_logger.addHandler(console)
+    # stdoutハンドラーが存在しない場合のみ、新しいハンドラーを追加
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(level)
+    console.setFormatter(desired_formatter)
+    root_logger.addHandler(console)
 
 
 def get_logger(name: str) -> logging.Logger:

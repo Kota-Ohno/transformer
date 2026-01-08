@@ -184,6 +184,8 @@ def load_checkpoint(
             'epoch': epoch,
             'best_valid_loss': val_loss,
             'best_bleu': bleu_score,
+            'last_valid_loss': val_loss,  # 最新の検証損失（そのエポックの値）
+            'last_bleu': bleu_score,  # 最新のBLEUスコア（そのエポックの値）
             'model_config': model_config
         }
 

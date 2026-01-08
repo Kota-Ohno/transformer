@@ -2,4 +2,4 @@
 # このファイルはGPU環境（CUDA 12.x）で使用する追加パッケージを含みます
 # CPU環境では requirements.txt のみを使用してください
 
-spacy[cuda12x]==3.6.1
+spacy[cuda12x]==3.8.11

@@ -80,11 +80,13 @@ class Trainer:
                     logging.warning(f"batch_sizeをintに変換できませんでした: {batch_size}。デフォルト値1を使用します")
                     batch_size = 1
 
+            # 学習率はCLI引数を優先し、Noneの場合はCONFIGから取得
+            learning_rate = self.args.learning_rate if self.args.learning_rate is not None else CONFIG.training_config.learning_rate
             wandb_config = {
                 "hidden_size": CONFIG.model_hyperparameters.hidden_size,
                 "num_heads": CONFIG.model_hyperparameters.num_heads,
                 "num_layers": CONFIG.model_hyperparameters.num_layers,
-                "learning_rate": CONFIG.training_config.learning_rate,
+                "learning_rate": learning_rate,
                 "batch_size": batch_size,
                 "effective_batch_size": batch_size * CONFIG.training_config.gradient_accumulation_steps,
                 "warmup_steps": self.args.warmup_steps,
@@ -241,8 +243,8 @@ class Trainer:
                 self.best_valid_loss = checkpoint_data.get('best_valid_loss', float('inf'))
                 self.best_bleu = checkpoint_data.get('best_bleu', 0.0)
                 # 最新の検証済みメトリクスも復元（KeyboardInterrupt時のチェックポイント保存用）
-                self.last_valid_loss = checkpoint_data.get('best_valid_loss', None)
-                self.last_bleu = checkpoint_data.get('best_bleu', None)
+                self.last_valid_loss = checkpoint_data.get('last_valid_loss', None)
+                self.last_bleu = checkpoint_data.get('last_bleu', None)
                 logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、最良検証損失 {self.best_valid_loss:.4f}")
             except Exception as e:
                 logging.error(f"チェックポイントからの復元に失敗しました: {e}")

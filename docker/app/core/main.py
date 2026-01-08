@@ -46,8 +46,14 @@ class ColoredFormatter(logging.Formatter):
     def format(self, record):
         color = self.LEVEL_COLORS.get(record.levelno, Colors.RESET)
         record_copy = copy.copy(record)
+        # 完全にフォーマットされたメッセージを取得
+        formatted_message = record.getMessage()
+        # 色付きメッセージを設定
+        record_copy.msg = f"{color}{formatted_message}{Colors.RESET}"
+        # さらなるフォーマットを避けるためにargsをクリア
+        record_copy.args = ()
+        # レベル名も色付け
         record_copy.levelname = f"{color}{record.levelname}{Colors.RESET}"
-        record_copy.msg = f"{color}{record.msg}{Colors.RESET}"
         return super().format(record_copy)
 
 def setup_logging():
@@ -189,7 +195,7 @@ def main():
         os.environ['TRANSFORMER_TRAINING_BATCH_SIZE'] = '16'
         os.environ['TRANSFORMER_TRAINING_NUM_EPOCHS'] = '3'
         os.environ['TRANSFORMER_TRAINING_PATIENCE'] = '1'
-        unknown_args.extend(['--fast'])
+        os.environ['TRANSFORMER_FAST_MODE'] = '1'
         print(f"{Colors.SUCCESS}高速モードが有効です: 少ないエポック数でトレーニングを高速化します{Colors.RESET}")
 
     # 小さいモデルの設定
@@ -202,8 +208,8 @@ def main():
 
     # データサンプル数制限の設定
     if args.limit_samples > 0:
+        os.environ['TRANSFORMER_LIMIT_SAMPLES'] = str(args.limit_samples)
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
-        unknown_args.extend(['--limit-samples', str(args.limit_samples)])
 
     # ロギングの設定
     setup_logging()

@@ -22,10 +22,10 @@ RUN groupadd -r transformer && \
 
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
-# デバイス設定（CUDAが利用できない場合は自動的にCPUにフォールバックされます）
-ENV TRANSFORMER_GLOBAL_DEVICE=cuda
+# デバイス設定（デフォルトはcuda、実行時に上書き可能）
+ENV TRANSFORMER_GLOBAL_DEVICE=${TRANSFORMER_GLOBAL_DEVICE:-cuda}
 # 後方互換性のため、TRANSFORMER_DEVICEも設定
-ENV TRANSFORMER_DEVICE=cuda
+ENV TRANSFORMER_DEVICE=${TRANSFORMER_DEVICE:-cuda}
 
 # 非rootユーザーに切り替え
 USER transformer
