@@ -1,9 +1,9 @@
 # Build tools
-setuptools==68.0.0
+setuptools>=78.1.1
 wheel==0.40.0
 
 # NLP関連パッケージ
-spacy[cuda12x]==3.6.1
+spacy==3.6.1
 sentencepiece==0.1.99
 sacrebleu==2.3.1
 nltk==3.8.1
@@ -24,3 +24,6 @@ better-exceptions==0.3.3
 
 # Testing
 pytest==7.4.2
+
+# Unicode width calculation
+wcwidth==0.2.13

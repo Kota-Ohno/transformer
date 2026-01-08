@@ -197,6 +197,7 @@ def main():
     # データサンプル数制限の設定
     if args.limit_samples > 0:
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
+        unknown_args.extend(['--limit-samples', str(args.limit_samples)])
 
     # ロギングの設定
     setup_logging()

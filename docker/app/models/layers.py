@@ -15,9 +15,10 @@ class PositionalEncoding(nn.Module):
         # sin/cosペアで同じ周波数項を共有する標準的な実装
         # ペアインデックス i = 0..(d_model//2 - 1) に対して div_term を計算
         # 10000^(-2*i/d_model) を使用
-        n_pairs = d_model // 2
+        # d_modelが奇数の場合もサポートするため、n_pairs = (d_model + 1) // 2 を使用
+        n_pairs = (d_model + 1) // 2
         div_term = torch.exp(
-            torch.arange(0, d_model, step=2, dtype=torch.float) * (-math.log(10000.0) / d_model)
+            torch.arange(0, n_pairs, dtype=torch.float) * (-math.log(10000.0) / d_model) * 2
         )
 
         # positionとdiv_termをブロードキャスト乗算
@@ -25,8 +26,9 @@ class PositionalEncoding(nn.Module):
 
         # sin と cos を使って位置エンコーディングを作成
         # sinを偶数インデックス、cosを奇数インデックスに割り当て
+        # d_modelが奇数の場合、最後のcos列は省略される
         pe[:, 0::2] = torch.sin(angle)
-        pe[:, 1::2] = torch.cos(angle)
+        pe[:, 1::2] = torch.cos(angle[:, :d_model // 2])
 
         # バッチ次元を追加 [1, max_seq_length, d_model]
         pe = pe.unsqueeze(0)

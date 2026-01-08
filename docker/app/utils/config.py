@@ -211,12 +211,20 @@ class GlobalConfig:
         if value is None:
             return None, False
 
-        # 型が一致している場合はそのまま返す
-        if isinstance(value, expected_type):
-            return value, True
+        # 型アノテーションが複雑な型（List, Dict等）の場合を先にチェック
+        origin = get_origin(expected_type)
+        if origin is None:
+            # ジェネリクスでない場合のみ、isinstanceチェックを実行
+            try:
+                if isinstance(value, expected_type):
+                    return value, True
+            except TypeError:
+                # isinstanceがジェネリクス型に対してTypeErrorを発生させた場合
+                # 後続の処理に進む（このケースは通常発生しないが、念のため）
+                pass
 
         # 型アノテーションが複雑な型（List, Dict等）の場合
-        origin = get_origin(expected_type)
+        if origin is not None:
         if origin is not None:
             if origin is list:
                 # List型の場合

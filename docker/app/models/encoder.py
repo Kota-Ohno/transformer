@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from models.attention import MultiHeadAttention
-from models.layers import FeedForward, PositionalEncoding
-from utils.validation import validate_token_ids
+from .attention import MultiHeadAttention
+from .layers import FeedForward, PositionalEncoding
+from ..utils.validation import validate_token_ids
 
 class EncoderLayer(nn.Module):
     """Transformerのエンコーダーレイヤー"""

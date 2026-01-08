@@ -7,10 +7,16 @@
 import os
 import argparse
 import time
+from wcwidth import wcswidth
 
 def print_header(title):
     """見出しを表示"""
-    line = "=" * len(title)
+    # 表示幅を計算（マルチバイト文字に対応）
+    display_width = wcswidth(title)
+    if display_width < 0:
+        # wcswidthが負の値を返した場合はlen()にフォールバック
+        display_width = len(title)
+    line = "=" * display_width
     print(f"\n{line}")
     print(title)
     print(f"{line}\n")

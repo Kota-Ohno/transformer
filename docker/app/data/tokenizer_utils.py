@@ -2,19 +2,83 @@ import os
 import logging
 import sentencepiece as spm
 import re
+from typing import List, Union, Tuple
 from data.data import train_sentencepiece
 
 # モジュールスコープのロガーを作成
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-def train_and_load_sp_models(train_texts_src, train_texts_tgt):
+
+def _validate_and_filter_texts(
+    texts: Union[str, List[str]], param_name: str
+) -> List[str]:
+    """
+    テキストリストを検証してフィルタリングします。
+
+    Args:
+        texts: 検証するテキスト（文字列またはリスト）
+        param_name: パラメータ名（エラーメッセージ用）
+
+    Returns:
+        list[str]: フィルタリングされた文字列のリスト
+
+    Raises:
+        ValueError: 入力が無効な場合
+    """
+    if texts is None:
+        raise ValueError(
+            f"{param_name} は None であってはなりません。"
+            f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
+        )
+
+    # 単一の文字列をリストに変換
+    if isinstance(texts, str):
+        texts = [texts]
+
+    # イテラブルでない場合はエラー
+    if not hasattr(texts, "__iter__"):
+        raise ValueError(
+            f"{param_name} はイテラブル（リストなど）である必要があります。"
+            f"現在の型: {type(texts).__name__}。"
+            f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
+        )
+
+    # リストに変換して要素を確認
+    texts = list(texts)
+
+    # 各要素が文字列であることを確認し、空文字列や空白のみの文字列をフィルタリング
+    filtered = []
+    for i, text in enumerate(texts):
+        if not isinstance(text, str):
+            raise ValueError(
+                f"{param_name} の要素はすべて文字列である必要があります。"
+                f"インデックス {i} の要素の型: {type(text).__name__}。"
+                f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
+            )
+        if text.strip():
+            filtered.append(text)
+
+    # フィルタリング後も空でないことを確認
+    if not filtered:
+        raise ValueError(
+            f"{param_name} は空であってはなりません。"
+            f"また、空白のみの文字列は無視されます。"
+            f"少なくとも1つ以上の非空白文字を含む文字列が必要です。"
+        )
+
+    return filtered
+
+
+def train_and_load_sp_models(
+    train_texts_src: Union[str, List[str]], train_texts_tgt: Union[str, List[str]]
+) -> Tuple[spm.SentencePieceProcessor, spm.SentencePieceProcessor]:
     """
     ソースとターゲットのSentencePieceモデルをトレーニングして読み込みます。
 
     Args:
-        train_texts_src (list[str]): ソース言語のトレーニングテキストのリスト
-        train_texts_tgt (list[str]): ターゲット言語のトレーニングテキストのリスト
+        train_texts_src: ソース言語のトレーニングテキスト（文字列またはリスト）
+        train_texts_tgt: ターゲット言語のトレーニングテキスト（文字列またはリスト）
 
     Returns:
         tuple: (ソースモデル, ターゲットモデル)
@@ -22,95 +86,9 @@ def train_and_load_sp_models(train_texts_src, train_texts_tgt):
     Raises:
         ValueError: 入力パラメータが無効な場合（None、空、または文字列のリストでない場合）
     """
-    # 入力検証: train_texts_src
-    if train_texts_src is None:
-        raise ValueError(
-            "train_texts_src は None であってはなりません。"
-            "文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-        )
-
-    # 単一の文字列をリストに変換
-    if isinstance(train_texts_src, str):
-        train_texts_src = [train_texts_src]
-
-    # イテラブルでない場合はエラー
-    if not hasattr(train_texts_src, '__iter__'):
-        raise ValueError(
-            f"train_texts_src はイテラブル（リストなど）である必要があります。"
-            f"現在の型: {type(train_texts_src).__name__}。"
-            f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-        )
-
-    # リストに変換して要素を確認
-    train_texts_src = list(train_texts_src)
-
-    # 各要素が文字列であることを確認し、空文字列や空白のみの文字列をフィルタリング
-    filtered_src = []
-    for i, text in enumerate(train_texts_src):
-        if not isinstance(text, str):
-            raise ValueError(
-                f"train_texts_src の要素はすべて文字列である必要があります。"
-                f"インデックス {i} の要素の型: {type(text).__name__}。"
-                f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-            )
-        # 空白のみの文字列を除外
-        if text.strip():
-            filtered_src.append(text)
-
-    # フィルタリング後も空でないことを確認
-    if not filtered_src:
-        raise ValueError(
-            "train_texts_src は空であってはなりません。"
-            "また、空白のみの文字列は無視されます。"
-            "少なくとも1つ以上の非空白文字を含む文字列が必要です。"
-        )
-
-    train_texts_src = filtered_src
-
-    # 入力検証: train_texts_tgt
-    if train_texts_tgt is None:
-        raise ValueError(
-            "train_texts_tgt は None であってはなりません。"
-            "文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-        )
-
-    # 単一の文字列をリストに変換
-    if isinstance(train_texts_tgt, str):
-        train_texts_tgt = [train_texts_tgt]
-
-    # イテラブルでない場合はエラー
-    if not hasattr(train_texts_tgt, '__iter__'):
-        raise ValueError(
-            f"train_texts_tgt はイテラブル（リストなど）である必要があります。"
-            f"現在の型: {type(train_texts_tgt).__name__}。"
-            f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-        )
-
-    # リストに変換して要素を確認
-    train_texts_tgt = list(train_texts_tgt)
-
-    # 各要素が文字列であることを確認し、空文字列や空白のみの文字列をフィルタリング
-    filtered_tgt = []
-    for i, text in enumerate(train_texts_tgt):
-        if not isinstance(text, str):
-            raise ValueError(
-                f"train_texts_tgt の要素はすべて文字列である必要があります。"
-                f"インデックス {i} の要素の型: {type(text).__name__}。"
-                f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
-            )
-        # 空白のみの文字列を除外
-        if text.strip():
-            filtered_tgt.append(text)
-
-    # フィルタリング後も空でないことを確認
-    if not filtered_tgt:
-        raise ValueError(
-            "train_texts_tgt は空であってはなりません。"
-            "また、空白のみの文字列は無視されます。"
-            "少なくとも1つ以上の非空白文字を含む文字列が必要です。"
-        )
-
-    train_texts_tgt = filtered_tgt
+    # 入力検証
+    train_texts_src = _validate_and_filter_texts(train_texts_src, "train_texts_src")
+    train_texts_tgt = _validate_and_filter_texts(train_texts_tgt, "train_texts_tgt")
 
     # モデルパス
     src_model_prefix = os.path.join("models", "sp_src")
@@ -161,7 +139,24 @@ def normalize_text(text, lang, normalize_numeric='<NUM>'):
 
     Returns:
         str: 正規化されたテキスト
+
+    Raises:
+        TypeError: textがNoneまたはstr型でない場合
     """
+    # textの検証
+    if text is None:
+        raise TypeError(
+            "text は None であってはなりません。"
+            "文字列を渡してください。"
+        )
+
+    if not isinstance(text, str):
+        raise TypeError(
+            f"text は str 型である必要があります。"
+            f"現在の型: {type(text).__name__}。"
+            f"文字列を渡してください。"
+        )
+
     # 小文字化（英語のみ）
     if lang == "en_US":
         text = text.lower()
@@ -197,7 +192,39 @@ def tokenize_with_sentencepiece(text, sp_model, lang=None, normalize_numeric='<N
 
     Returns:
         list[int]: トークンIDのリスト
+
+    Raises:
+        TypeError: sp_modelがNoneまたはencode_as_idsメソッドを持たない場合、
+                   またはtextがNoneまたはstr型でない場合
     """
+    # sp_modelの検証
+    if sp_model is None:
+        raise TypeError(
+            "sp_model は None であってはなりません。"
+            "SentencePieceProcessorインスタンスを渡してください。"
+        )
+
+    if not hasattr(sp_model, "encode_as_ids"):
+        raise TypeError(
+            f"sp_model は encode_as_ids メソッドを実装している必要があります。"
+            f"現在の型: {type(sp_model).__name__}。"
+            f"SentencePieceProcessorインスタンスを渡してください。"
+        )
+
+    # textの検証
+    if text is None:
+        raise TypeError(
+            "text は None であってはなりません。"
+            "文字列を渡してください。"
+        )
+
+    if not isinstance(text, str):
+        raise TypeError(
+            f"text は str 型である必要があります。"
+            f"現在の型: {type(text).__name__}。"
+            f"文字列を渡してください。"
+        )
+
     if lang:
         text = normalize_text(text, lang, normalize_numeric=normalize_numeric)
     return sp_model.encode_as_ids(text)

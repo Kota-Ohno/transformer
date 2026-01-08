@@ -62,10 +62,14 @@ def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_
         logging.info(f"最新のモデルを使用します: {model_path}")
 
     # モデルの読み込み
+    # 注意: weights_only=Trueにより、信頼できないpickleデータの逆シリアライゼーションを防止
+    # モデルファイルは信頼できるソース（自分たちが保存したモデル）からのみ読み込むこと
     logging.info(f"モデルをロード中: {model_path}")
-    checkpoint = torch.load(model_path, map_location=CONFIG.device)
+    checkpoint = torch.load(model_path, map_location=CONFIG.device, weights_only=True)
 
     # 保存されたモデル設定を読み込む
+    # 注意: model_configは信頼できるソース（自分たちが保存したモデル）からのみ読み込まれる
+    # weights_only=Trueでもstate_dictを含む辞書は読み込めるが、カスタムオブジェクトは読み込めない
     saved_config = None
 
     # デフォルト値を設定

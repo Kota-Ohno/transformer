@@ -402,8 +402,11 @@ def _setup_training_components(
     # 勾配スケーラーの設定
     scaler = torch.cuda.amp.GradScaler()
 
-    # 総ステップ数を計算
-    total_steps = len(train_loader) * args.epochs // CONFIG.training_config.gradient_accumulation_steps
+    # 総ステップ数を計算（勾配蓄積を考慮、最低1ステップを保証）
+    grad_accum = CONFIG.training_config.gradient_accumulation_steps
+    total_batches = len(train_loader) * args.epochs
+    # 天井除算: (a + b - 1) // b で実装し、max(1, ...)で最低1を保証
+    total_steps = max(1, (total_batches + grad_accum - 1) // grad_accum)
 
     # 学習率スケジューラの設定
     model_hidden_size = CONFIG.model_hyperparameters.hidden_size

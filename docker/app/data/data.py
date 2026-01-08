@@ -122,7 +122,6 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
     except Exception as e:
         # 完全な例外情報とトレースバックをログに記録
         logging.exception(f"Error in collate_fn: {e}")
-        logging.error(f"Traceback:\n{traceback.format_exc()}")
 
         # エラーを再発生させて処理を停止し、問題を可視化
         raise RuntimeError(f"Failed to process batch in collate_fn: {e}") from e
@@ -300,7 +299,9 @@ def tokens_to_ids(tokens: List[str], vocabulary: Vocabulary) -> List[int]:
 # WeakKeyDictionary: 弱参照可能なVocabularyオブジェクト用（GC時に自動削除）
 _id_to_token_cache_weak = weakref.WeakKeyDictionary()
 # WeakKeyDictionary: 組み込みdict語彙用（vocabularyオブジェクト自体をキーとして使用、GC時に自動削除）
-_dict_vocab_cache = weakref.WeakKeyDictionary()
+# dict語彙用のキャッシュ（id()をキーとして使用）
+# 注意: 弱参照ではないため、clear_dict_vocab_cache()で手動クリアが必要
+_dict_vocab_cache: Dict[int, Dict[int, str]] = {}
 _dict_vocab_cache_lock = threading.Lock()
 
 def clear_dict_vocab_cache() -> None:
@@ -316,10 +317,11 @@ def ids_to_tokens(ids: List[int], vocabulary: Any) -> List[str]:
         return [vocabulary.id2token.get(id, '<unk>') for id in ids]
     # vocabularyが辞書の場合（語彙ファイルからロードした場合などに発生）
     else:
-        # vocabularyオブジェクト自体をキーとしてキャッシュを管理（WeakKeyDictionary使用）
+        # vocabularyオブジェクトのid()をキーとしてキャッシュを管理
+        vocab_id = id(vocabulary)
         with _dict_vocab_cache_lock:
             # キャッシュに存在しない場合のみ逆マッピングを構築
-            if vocabulary not in _dict_vocab_cache:
-                _dict_vocab_cache[vocabulary] = {v: k for k, v in vocabulary.items()}
-            id_to_token = _dict_vocab_cache[vocabulary]
+            if vocab_id not in _dict_vocab_cache:
+                _dict_vocab_cache[vocab_id] = {v: k for k, v in vocabulary.items()}
+            id_to_token = _dict_vocab_cache[vocab_id]
         return [id_to_token.get(id, '<unk>') for id in ids]
