@@ -66,9 +66,149 @@ git log -1 --pretty=format:"%s%n%b"
 
 ## コーディング規約
 
+### 基本原則
+
 - PythonコードはPEP 8に準拠
-- 型ヒントの使用を推奨
-- ドキュメント文字列（docstring）の記述を推奨
+- 型ヒントは必須（関数の引数、戻り値、クラスの属性など）
+- ドキュメント文字列（docstring）は必須
+
+### 型ヒント
+
+すべての関数、メソッド、クラス属性には型ヒントを記述してください。型チェックには`mypy`を使用します。
+
+#### mypyの実行
+
+```bash
+# プロジェクト全体をチェック
+mypy docker/app
+
+# 特定のファイルをチェック
+mypy docker/app/models/model.py
+
+# 厳密モードでチェック
+mypy --strict docker/app
+```
+
+#### mypy設定（mypy.ini）
+
+プロジェクトルートに`mypy.ini`を作成し、以下の設定を推奨します：
+
+```ini
+[mypy]
+python_version = 3.10
+warn_return_any = True
+warn_unused_configs = True
+disallow_untyped_defs = True
+disallow_incomplete_defs = True
+check_untyped_defs = True
+disallow_untyped_decorators = True
+no_implicit_optional = True
+warn_redundant_casts = True
+warn_unused_ignores = True
+warn_no_return = True
+warn_unreachable = True
+strict_equality = True
+
+# 無視するモジュール（必要に応じて調整）
+[mypy-torch.*]
+ignore_missing_imports = True
+
+[mypy-numpy.*]
+ignore_missing_imports = True
+```
+
+### Docstring形式
+
+Googleスタイルのdocstringを使用してください。以下のセクションを含めることを推奨します：
+
+- **Args**: 引数の説明（型と説明）
+- **Returns**: 戻り値の説明（型と説明）
+- **Raises**: 発生する可能性のある例外
+- **Examples**: 使用例（オプションだが推奨）
+
+### 具体例
+
+以下は、PEP 8に準拠し、型ヒントとGoogleスタイルのdocstringを含む関数の例です：
+
+```python
+from typing import List, Optional
+import torch
+from torch import Tensor
+
+
+def calculate_loss(
+    predictions: Tensor,
+    targets: Tensor,
+    reduction: str = "mean",
+    ignore_index: Optional[int] = None,
+) -> Tensor:
+    """損失を計算する関数。
+
+    Args:
+        predictions: モデルの予測値。形状は (batch_size, seq_len, vocab_size)。
+        targets: 正解ラベル。形状は (batch_size, seq_len)。
+        reduction: 損失の縮約方法。'mean'、'sum'、'none'のいずれか。デフォルトは'mean'。
+        ignore_index: 無視するインデックス。Noneの場合はすべてのインデックスを考慮。
+
+    Returns:
+        計算された損失値。reductionが'mean'または'sum'の場合はスカラー、
+        'none'の場合は各サンプルの損失を含むテンソル。
+
+    Raises:
+        ValueError: reductionが'mean'、'sum'、'none'のいずれでもない場合。
+        RuntimeError: predictionsとtargetsの形状が一致しない場合。
+
+    Examples:
+        >>> pred = torch.randn(32, 100, 5000)
+        >>> tgt = torch.randint(0, 5000, (32, 100))
+        >>> loss = calculate_loss(pred, tgt)
+        >>> print(loss.item())
+    """
+    if reduction not in ["mean", "sum", "none"]:
+        raise ValueError(f"Invalid reduction: {reduction}")
+
+    # 損失計算の実装
+    # ...
+    return loss
+```
+
+### リンティングとフォーマット
+
+コードの品質を保つため、以下のツールを使用してください：
+
+- **flake8**: コードスタイルとエラーのチェック
+- **black**: コードフォーマッター（PEP 8準拠）
+
+#### 実行方法
+
+```bash
+# flake8でチェック
+flake8 docker/app
+
+# blackでフォーマット（変更を適用）
+black docker/app
+
+# blackでフォーマット（変更をプレビューのみ）
+black --check docker/app
+```
+
+### CI/CDでの実行
+
+CIパイプラインでは、以下のコマンドを順に実行してください：
+
+```bash
+# 1. コードフォーマットのチェック
+black --check docker/app
+
+# 2. リンティング
+flake8 docker/app
+
+# 3. 型チェック
+mypy docker/app
+
+# 4. テストの実行
+pytest
+```
 
 ## テスト
 

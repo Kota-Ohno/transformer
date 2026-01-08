@@ -13,18 +13,20 @@ class PositionalEncoding(nn.Module):
         position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
 
         # sin/cosペアで同じ周波数項を共有する標準的な実装
-        # d_modelが奇数の場合でも形状が一致するように、偶数と奇数用に別々の周波数配列を計算
-        n_even = (d_model + 1) // 2  # 偶数インデックスの数
-        n_odd = d_model // 2  # 奇数インデックスの数
+        # ペアインデックス i = 0..(d_model//2 - 1) に対して div_term を計算
+        # 10000^(-2*i/d_model) を使用
+        n_pairs = d_model // 2
+        div_term = torch.exp(
+            torch.arange(0, d_model, step=2, dtype=torch.float) * (-math.log(10000.0) / d_model)
+        )
 
-        # 完全な周波数ベクトルを計算してから、必要な長さにスライス
-        full_div_term = torch.exp(torch.arange(0, d_model, dtype=torch.float) * (-math.log(10000.0) / d_model))
-        div_term_even = full_div_term[:n_even]  # 偶数インデックス用
-        div_term_odd = full_div_term[:n_odd]   # 奇数インデックス用
+        # positionとdiv_termをブロードキャスト乗算
+        angle = position * div_term  # [max_seq_length, n_pairs]
 
         # sin と cos を使って位置エンコーディングを作成
-        pe[:, 0::2] = torch.sin(position * div_term_even)
-        pe[:, 1::2] = torch.cos(position * div_term_odd)
+        # sinを偶数インデックス、cosを奇数インデックスに割り当て
+        pe[:, 0::2] = torch.sin(angle)
+        pe[:, 1::2] = torch.cos(angle)
 
         # バッチ次元を追加 [1, max_seq_length, d_model]
         pe = pe.unsqueeze(0)

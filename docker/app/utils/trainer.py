@@ -41,6 +41,9 @@ class Trainer:
         self.patience_counter = 0
         self.wandb_available = False
         self.max_epoch_retries = MAX_EPOCH_RETRIES
+        # 最新の検証済みメトリクスを保存（KeyboardInterrupt時のチェックポイント保存用）
+        self.last_valid_loss = None
+        self.last_bleu = None
 
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:
@@ -225,6 +228,9 @@ class Trainer:
                 start_epoch = checkpoint_data.get('epoch', 0) + 1
                 self.best_valid_loss = checkpoint_data.get('best_valid_loss', float('inf'))
                 self.best_bleu = checkpoint_data.get('best_bleu', 0.0)
+                # 最新の検証済みメトリクスも復元（KeyboardInterrupt時のチェックポイント保存用）
+                self.last_valid_loss = checkpoint_data.get('best_valid_loss', None)
+                self.last_bleu = checkpoint_data.get('best_bleu', None)
                 logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、最良検証損失 {self.best_valid_loss:.4f}")
             except Exception as e:
                 logging.error(f"チェックポイントからの復元に失敗しました: {e}")
@@ -267,6 +273,10 @@ class Trainer:
         logging.info(f"トレーニング損失: {train_loss:.4f} | 検証損失: {valid_loss:.4f} | BLEUスコア: {bleu_score:.4f}")
 
         self._log_metrics(epoch+1, train_loss, valid_loss, bleu_score)
+
+        # 最新の検証済みメトリクスを保存（KeyboardInterrupt時のチェックポイント保存用）
+        self.last_valid_loss = valid_loss
+        self.last_bleu = bleu_score
 
         return valid_loss, bleu_score
 
@@ -383,13 +393,24 @@ class Trainer:
                 except KeyboardInterrupt:
                     last_epoch = epoch + 1
                     logging.info("ユーザーによって中断されました。最終チェックポイントを保存します...")
+                    # 最新の検証済みメトリクスを使用（存在しない場合はデフォルト値にフォールバック）
+                    interrupt_valid_loss = getattr(self, 'last_valid_loss', None)
+                    interrupt_bleu_score = getattr(self, 'last_bleu', None)
+
+                    if interrupt_valid_loss is None:
+                        interrupt_valid_loss = float('inf')
+                        logging.warning("検証済みメトリクスが存在しないため、デフォルト値を使用します")
+                    if interrupt_bleu_score is None:
+                        interrupt_bleu_score = 0.0
+                        logging.warning("検証済みメトリクスが存在しないため、デフォルト値を使用します")
+
                     save_checkpoint(
                         model=self.model,
                         optimizer=self.optimizer,
                         scheduler=self.scheduler,
                         epoch=epoch,
-                        val_loss=valid_loss,
-                        bleu_score=bleu_score,
+                        val_loss=interrupt_valid_loss,
+                        bleu_score=interrupt_bleu_score,
                         is_best=False,
                         model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                         model_num_heads=CONFIG.model_hyperparameters.num_heads,

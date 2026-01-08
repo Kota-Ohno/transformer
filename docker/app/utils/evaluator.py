@@ -6,7 +6,7 @@ import logging
 import time
 import traceback
 import sacrebleu
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Optional, Dict, List, Tuple, Any, Union
 from nltk.translate.bleu_score import SmoothingFunction
 from utils.config import CONFIG
 from utils.constants import (
@@ -59,17 +59,18 @@ def evaluate(
     total_inference_time = 0
 
     # 最大シーケンス長（メモリ節約のため必要に応じて切り捨て）
-    # 防御的なチェック: model_hyperparameters と max_seq_length の存在を確認
-    if not hasattr(config, 'model_hyperparameters'):
-        raise ValueError(
-            "configにmodel_hyperparameters属性が存在しません。"
-            "設定が正しく初期化されているか確認してください。"
-        )
     model_hyperparameters = getattr(config, 'model_hyperparameters', None)
-    max_length = getattr(model_hyperparameters, 'max_seq_length', 512) if model_hyperparameters else 512
-    if not hasattr(model_hyperparameters, 'max_seq_length'):
+    if model_hyperparameters is not None:
+        max_length = getattr(model_hyperparameters, 'max_seq_length', 512)
+        if not hasattr(model_hyperparameters, 'max_seq_length'):
+            logging.warning(
+                "config.model_hyperparameters.max_seq_lengthが存在しません。"
+                "デフォルト値512を使用します。"
+            )
+    else:
+        max_length = 512
         logging.warning(
-            "config.model_hyperparameters.max_seq_lengthが存在しません。"
+            "config.model_hyperparametersが存在しません。"
             "デフォルト値512を使用します。"
         )
 
@@ -277,7 +278,7 @@ def decode_for_bleu(
     return target_sentences, predicted_sentences
 
 def calculate_sacrebleu(
-    references: List[List[str]],
+    references: Union[List[List[str]], List[List[List[str]]]],
     hypotheses: List[List[str]]
 ) -> float:
     """
@@ -285,8 +286,10 @@ def calculate_sacrebleu(
     SacreBLEUはBLEUのより標準化されたバージョンです。
 
     Args:
-        references (list): 参照訳のリスト（文字列またはトークンのリスト）
-        hypotheses (list): 仮説訳のリスト（文字列またはトークンのリスト）
+        references: 参照訳のリスト。以下のいずれかの形式:
+            - List[List[str]]: 各参照訳がトークンのリスト
+            - List[List[List[str]]]: 各参照訳が複数の翻訳候補を含む（最初の候補のみ使用）
+        hypotheses: 仮説訳のリスト（List[List[str]]: 各仮説訳はトークンのリスト）
 
     Returns:
         float: SacreBLEUスコア

@@ -204,33 +204,19 @@ class DataAugmentor:
             # フォールバック: 一般的な特殊トークンID（0-3）を仮定
             special_ids = {0, 1, 2, 3}
 
-        # 有効なID範囲を計算
+        # 特殊トークンIDを除外したIDのリストを作成
         vocab_size = len(tokenizer)
-        if special_ids:
-            start = max(special_ids) + 1
-        else:
-            start = 0
-
-        end = vocab_size - 1
-
-        # 範囲の検証
-        if start > end:
-            logging.warning(f"無効なID範囲: start={start}, end={end}, vocab_size={vocab_size}。"
-                          f"特殊トークンID={special_ids}。フォールバック値を使用します。")
-            # 特殊トークンIDを除外した範囲を再計算
-            non_special_ids = [i for i in range(vocab_size) if i not in special_ids]
-            if not non_special_ids:
-                # すべてが特殊トークンの場合（異常なケース）
-                logging.error(f"すべてのIDが特殊トークンです。置換をスキップします。")
-                return result
-            start = min(non_special_ids)
-            end = max(non_special_ids)
+        non_special_ids = [i for i in range(vocab_size) if i not in special_ids]
+        if not non_special_ids:
+            # すべてが特殊トークンの場合（異常なケース）
+            logging.error(f"すべてのIDが特殊トークンです。置換をスキップします。")
+            return result
 
         # 置換対象の位置をランダムに選択して置換
         for i in range(len(result)):
             if rng.random() < replace_prob:
-                # 有効なID範囲からランダムに選択
-                result[i] = rng.randint(start, end)
+                # 特殊トークンを除外したIDからランダムに選択
+                result[i] = rng.choice(non_special_ids)
 
         return result
 

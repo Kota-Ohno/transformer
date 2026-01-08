@@ -183,8 +183,7 @@ def main():
         os.environ['TRANSFORMER_TRAINING_BATCH_SIZE'] = '16'
         os.environ['TRANSFORMER_TRAINING_NUM_EPOCHS'] = '3'
         os.environ['TRANSFORMER_TRAINING_PATIENCE'] = '1'
-        if '--fast' not in unknown_args:
-            unknown_args.extend(['--fast'])
+        unknown_args.extend(['--fast'])
         print(f"{Colors.SUCCESS}高速モードが有効です: 少ないエポック数でトレーニングを高速化します{Colors.RESET}")
 
     # 小さいモデルの設定

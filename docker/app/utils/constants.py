@@ -4,9 +4,9 @@
 from typing import Final
 
 # VRAM閾値（MB）
-VRAM_THRESHOLD_4GB: Final[int] = 4000
-VRAM_THRESHOLD_8GB: Final[int] = 8000
-VRAM_THRESHOLD_16GB: Final[int] = 16000
+VRAM_THRESHOLD_4GB: Final[int] = 4096
+VRAM_THRESHOLD_8GB: Final[int] = 8192
+VRAM_THRESHOLD_16GB: Final[int] = 16384
 
 # バッチサイズ関連
 DEFAULT_BATCH_SIZE_SMALL_VRAM: Final[int] = 8  # 4GB未満のVRAM用

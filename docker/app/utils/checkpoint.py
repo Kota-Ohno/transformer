@@ -168,7 +168,7 @@ def load_checkpoint(
         if optimizer is not None and 'optimizer_state_dict' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+        if scheduler is not None and checkpoint.get('scheduler_state_dict') is not None:
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
         epoch = checkpoint.get('epoch', 0)
