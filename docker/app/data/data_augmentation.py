@@ -634,8 +634,6 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
 
 # メインの処理（単体テスト用）
 if __name__ == "__main__":
-    import torch
-
     # SentencePieceモデルをロードまたはトレーニング
     try:
         # テスト用のダミーデータ

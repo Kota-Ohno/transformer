@@ -458,7 +458,6 @@ class GlobalConfig:
                 try:
                     # 動的にGPUデバイスインデックスを取得
                     device_idx = torch.cuda.current_device()
-                    device_props = torch.cuda.get_device_properties(device_idx)
                     device_name = torch.cuda.get_device_name(device_idx)
                     logging.info(f"CUDAデバイスが利用可能です: {device_name}")
                 except (RuntimeError, AssertionError) as e:

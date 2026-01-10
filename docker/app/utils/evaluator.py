@@ -223,12 +223,35 @@ def decode_for_bleu(
     output_reshaped = output.view(-1, output_dim)
     pred_tokens = output_reshaped.argmax(dim=1)
 
-    # 正解と予測を元の形状に戻す
-    batch_size = tgt_output.size(0) if len(tgt_output.size()) > 1 else 1
-    seq_len = tgt_output.size(1) if len(tgt_output.size()) > 1 else tgt_output.size(0) // batch_size
+    # 正解と予測を元の形状に戻す（堅牢な形状処理）
+    # tgt_outputの次元数に基づいてbatch_sizeとseq_lenを計算
+    if tgt_output.dim() > 1:
+        batch_size = tgt_output.size(0)
+        seq_len = tgt_output.size(1)
+    else:
+        # 1次元の場合
+        batch_size = 1
+        seq_len = tgt_output.numel()
 
-    pred_tokens = pred_tokens.view(batch_size, seq_len)
-    tgt_reshaped = tgt_output.view(batch_size, seq_len)
+    # 要素数の整合性を確認
+    total_elements = batch_size * seq_len
+    if tgt_output.numel() != total_elements:
+        raise ValueError(
+            f"tgt_outputの要素数 ({tgt_output.numel()}) が "
+            f"batch_size * seq_len ({total_elements}) と一致しません。"
+            f"形状: {tgt_output.shape}, batch_size: {batch_size}, seq_len: {seq_len}"
+        )
+
+    # pred_tokensとtgt_outputの要素数が一致することを確認
+    if pred_tokens.numel() != tgt_output.numel():
+        raise ValueError(
+            f"pred_tokensの要素数 ({pred_tokens.numel()}) と "
+            f"tgt_outputの要素数 ({tgt_output.numel()}) が一致しません。"
+        )
+
+    # 形状を再構築
+    pred_tokens = pred_tokens.view(batch_size, -1)
+    tgt_reshaped = tgt_output.view(batch_size, -1)
 
     # CPUに移動してリスト化
     pred_tokens_cpu = pred_tokens.detach().cpu().tolist()
@@ -279,7 +302,8 @@ def decode_for_bleu(
 
 def calculate_sacrebleu(
     references: Union[List[List[str]], List[List[List[str]]]],
-    hypotheses: List[List[str]]
+    hypotheses: List[List[str]],
+    strict: bool = False
 ) -> float:
     """
     SacreBLEUを使用して翻訳品質を評価します。
@@ -290,9 +314,14 @@ def calculate_sacrebleu(
             - List[List[str]]: 各参照訳がトークンのリスト
             - List[List[List[str]]]: 各参照訳が複数の翻訳候補を含む（最初の候補のみ使用）
         hypotheses: 仮説訳のリスト（List[List[str]]: 各仮説訳はトークンのリスト）
+        strict: Trueの場合、referencesとhypothesesの長さが異なるとValueErrorを発生させる。
+                Falseの場合、警告を出して短い方に合わせて切り詰める（デフォルト: False）
 
     Returns:
         float: SacreBLEUスコア
+
+    Raises:
+        ValueError: strict=Trueかつreferencesとhypothesesの長さが異なる場合
     """
     # 入力チェック
     if not references or not hypotheses:
@@ -300,11 +329,20 @@ def calculate_sacrebleu(
         return 0.0
 
     if len(references) != len(hypotheses):
-        logging.warning(f"参照と仮説の数が一致しません。参照: {len(references)}, 仮説: {len(hypotheses)}")
-        # 短い方に合わせる
-        length = min(len(references), len(hypotheses))
-        references = references[:length]
-        hypotheses = hypotheses[:length]
+        if strict:
+            raise ValueError(
+                f"references ({len(references)}) と hypotheses ({len(hypotheses)}) の長さが異なります。"
+                f"strict=Trueのため、処理を中断します。"
+            )
+        else:
+            logging.warning(
+                f"参照と仮説の数が一致しません。参照: {len(references)}, 仮説: {len(hypotheses)}。"
+                f"短い方に合わせて切り詰めます。"
+            )
+            # 短い方に合わせる
+            length = min(len(references), len(hypotheses))
+            references = references[:length]
+            hypotheses = hypotheses[:length]
 
     # トークンから文字列に変換
     # references_processedとhypotheses_processedは必ず文字列になる

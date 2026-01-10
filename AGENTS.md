@@ -70,6 +70,7 @@ git log -1 --pretty=format:"%s%n%b"
 
 ### 基本原則
 
+- Python 3.10以上が必須（mypy設定（`python_version = 3.10`）と一致させるため）
 - PythonコードはPEP 8に準拠
 - 型ヒントは必須（関数の引数、戻り値、クラスの属性など）
 - ドキュメント文字列（docstring）は必須
@@ -214,13 +215,67 @@ pytest
 
 ## テスト
 
+### pytest設定
+
+プロジェクトでは`pytest.ini`を使用してpytestの設定を行っています。主な設定は以下の通りです：
+
+- **テストファイルパターン**: `tests.py`, `test_*.py`, `*_test.py`
+- **Pythonパス**: `.`（カレントディレクトリ）
+
+### テストの実行方法
+
+#### ローカル環境での実行
+
 ```bash
-# コンテナ内でテストを実行
+# プロジェクトルートから実行
 pytest
+
+# 特定のテストファイルを実行
+pytest docker/app/tests/test_example.py
+
+# カバレッジ付きで実行（オプション）
+pytest --cov=docker/app --cov-report=html
+```
+
+#### Dockerコンテナ内での実行
+
+```bash
+# docker-composeを使用する場合
+docker-compose exec app pytest
+
+# docker runを使用する場合
+docker run --rm \
+  --gpus all \
+  -v $(pwd)/docker/app:/src \
+  -w /src \
+  transformer-app pytest
+```
+
+#### テストの組織化
+
+- テストファイルは`docker/app/`配下に配置
+- テストファイル名は`test_*.py`または`*_test.py`の形式
+- フィクスチャは`conftest.py`に定義（pytestが自動的に検出）
+- モックライブラリとして`unittest.mock`を使用（標準ライブラリ）
+
+### カバレッジ
+
+カバレッジはオプションです。実行する場合は：
+
+```bash
+pytest --cov=docker/app --cov-report=term-missing
 ```
 
 ## その他の注意事項
 
 - Dockerコンテナ内で実行することを前提としています
 - GPU環境が必要です（NVIDIA GPU + NVIDIA Container Toolkit）
+  - Docker実行時は`--gpus all`フラグが必要
+  - NVIDIA Container Toolkitのインストールが必要
 - Weights & Biases（WandB）のAPIキーが必要な場合があります
+  - 環境変数`WANDB_API_KEY`で設定（例: `export WANDB_API_KEY=your_api_key_here`）
+  - WandBを使用する機能（ロギング、実験管理など）を利用する場合に必要
+- Docker統合の詳細
+  - 環境変数: `TRANSFORMER_*`形式の環境変数で設定をオーバーライド可能
+  - ボリュームマウント: `docker/app`ディレクトリを`/src`にマウント
+  - GPUフラグ: `--gpus all`でGPUアクセスを有効化

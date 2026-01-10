@@ -305,16 +305,13 @@ class TextTokenizer:
             # それでも取得できなかった場合は専用のpadトークンを追加する必要がある
             # この場合はエラーを出すか、デフォルト値を使う（SentencePieceモデルの設定を確認）
             if pad_id is None:
-                logger.error(
+                error_msg = (
                     "pad_idとeos_idの両方が取得できませんでした。"
                     "SentencePieceモデルに<pad>トークンが含まれているか確認してください。"
+                    "SentencePieceモデルを訓練する際に、明示的に<pad>トークンを追加してください。"
                 )
-                # フォールバック: 0を使用（ただし警告を出す）
-                pad_id = 0
-                logger.warning(
-                    "pad_idの取得に失敗したため、0をパディングトークンとして使用します。"
-                    "これは<unk>トークンと衝突する可能性があります。"
-                )
+                logger.error(error_msg)
+                raise RuntimeError(error_msg)
 
             # 固定の最大シーケンス長を使用
             max_sequence_length = CONFIG.model_hyperparameters.max_seq_length

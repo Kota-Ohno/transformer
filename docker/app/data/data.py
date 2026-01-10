@@ -69,15 +69,25 @@ def flatten_and_convert(sequence: Any) -> List[int]:
     無効な値は0に変換される
     """
     result = []
+    logger = logging.getLogger(__name__)
 
-    def _flatten(item):
+    def _flatten(item, path: str = ""):
         if isinstance(item, (list, tuple)):
-            for subitem in item:
-                _flatten(subitem)
+            for idx, subitem in enumerate(item):
+                new_path = f"{path}[{idx}]" if path else f"[{idx}]"
+                _flatten(subitem, new_path)
         else:
             try:
                 result.append(int(item))
-            except (ValueError, TypeError):
+            except (ValueError, TypeError) as e:
+                # 警告ログを出力（ログレベルが有効な場合のみ）
+                if logger.isEnabledFor(logging.WARNING):
+                    logger.warning(
+                        f"flatten_and_convert: 無効な値を検出しました。"
+                        f"項目: {item!r}, 型: {type(item).__name__}, "
+                        f"パス: {path if path else 'root'}, エラー: {e}. "
+                        f"0に変換します。"
+                    )
                 result.append(0)
 
     _flatten(sequence)
@@ -121,10 +131,20 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
         )
 
     # 長さ1以下のYシーケンスと長さ0のXシーケンスをフィルタリング（訓練に有用でないため除外）
+    original_len = len(X_flat)
     valid_indices = [
         i for i, (x_seq, y_seq) in enumerate(zip(X_flat, Y_flat))
         if len(y_seq) > 1 and len(x_seq) > 0
     ]
+
+    # 無効なサンプルがフィルタされた場合に警告をログに記録
+    dropped = original_len - len(valid_indices)
+    if dropped > 0:
+        logging.warning(
+            f"無効なサンプルがフィルタされました: X_flatとY_flatから{dropped}個のサンプルを削除しました "
+            f"(元のバッチサイズ: {original_len}, 残りのバッチサイズ: {len(valid_indices)}). "
+            f"valid_indicesには{len(valid_indices)}個の有効なインデックスが含まれています。"
+        )
 
     if len(valid_indices) == 0:
         # バッチ内のすべてのサンプルが無効な場合
