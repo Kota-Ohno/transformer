@@ -9,10 +9,24 @@ from utils.config import CONFIG  # Import CONFIG dictionary
 from tqdm import tqdm
 import sentencepiece as spm
 import logging
+import sys
 
 # モジュールスコープのロガーを作成
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# ルートロガーにメッセージを伝播させる
+logger.propagate = True
+
+# ルートロガーにハンドラーがなく、このロガーにもハンドラーがない場合のみ、
+# ローカルにハンドラーを追加（単独インポート時のフォールバック）
+root_logger = logging.getLogger()
+if not root_logger.handlers and not logger.handlers:
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
 
 
 class TextTokenizer:
@@ -139,7 +153,12 @@ class TextTokenizer:
         return cls(sp_src=sp_src, sp_tgt=sp_tgt)
 
     def save_model(self, model_path: str, is_source: bool = True) -> None:
-        """SentencePieceモデルを保存します。
+        """訓練時に保存されたSentencePieceモデルファイルを指定されたパスにコピーします。
+
+        注意: このメソッドはモデルオブジェクトを直接シリアライズするのではなく、
+        デフォルトの場所（models/sp_src.model または models/sp_tgt.model）から
+        ファイルをコピーします。そのため、trainメソッドでモデルを訓練した後にのみ
+        使用できます。
 
         Args:
             model_path: 保存先のパス（.model拡張子なし）
@@ -253,11 +272,25 @@ class TextTokenizer:
         # テンソルに変換（必要な場合）
         if return_tensors:
             # パディングを追加してテンソルに変換
+            # SentencePieceモデルからpad_idを取得
+            pad_id = model.pad_id() if hasattr(model, 'pad_id') and callable(model.pad_id) else 0
             max_len = max(len(tokens) for tokens in tokenized_texts) if tokenized_texts else 0
-            padded_tokens = [
-                tokens + [0] * (max_len - len(tokens)) if len(tokens) < max_len else tokens[:max_len]
-                for tokens in tokenized_texts
-            ]
+
+            padded_tokens = []
+            for tokens in tokenized_texts:
+                if len(tokens) > max_len:
+                    # シーケンスがmax_lenより長い場合は切り詰め、警告をログに記録
+                    logger.warning(
+                        f"トークンシーケンスがmax_len ({max_len}) を超えています "
+                        f"(長さ: {len(tokens)})。切り詰めます。"
+                    )
+                    tokens = tokens[:max_len]
+                elif len(tokens) < max_len:
+                    # パディングを追加
+                    tokens = tokens + [pad_id] * (max_len - len(tokens))
+                # len(tokens) == max_len の場合はそのまま使用（スライシング不要）
+                padded_tokens.append(tokens)
+
             return torch.tensor(padded_tokens, dtype=torch.long, device=self.device)
 
         return tokenized_texts

@@ -108,8 +108,11 @@ def train_and_load_sp_models(
     else:
         tgt_model_prefix = os.path.join("models", "sp_tgt")
 
-    # models ディレクトリがない場合は作成
-    os.makedirs("models", exist_ok=True)
+    # 各プレフィックスのディレクトリを取得し、存在しない場合は作成
+    src_dir = os.path.dirname(src_model_prefix) or "models"
+    tgt_dir = os.path.dirname(tgt_model_prefix) or "models"
+    os.makedirs(src_dir, exist_ok=True)
+    os.makedirs(tgt_dir, exist_ok=True)
 
     # モデルをトレーニング
     logger.info("ソース言語のSentencePieceモデルをトレーニング中...")
@@ -150,6 +153,7 @@ def normalize_text(text, lang, normalize_numeric='<NUM>'):
         normalize_numeric (str|None|False): 数字の正規化方法
             - 文字列（デフォルト: '<NUM>'）: 数字列をその文字列に置き換え
             - None または False: 数字を置き換えない
+            - 空文字列 ('') : 数字を置き換えない（数値正規化を無効化）
 
     Returns:
         str: 正規化されたテキスト
@@ -203,6 +207,7 @@ def tokenize_with_sentencepiece(text, sp_model, lang=None, normalize_numeric='<N
         normalize_numeric (str|None|False, optional): 数字の正規化方法
             - 文字列（デフォルト: '<NUM>'）: 数字列をその文字列に置き換え
             - None または False: 数字を置き換えない
+            - 空文字列 ('') : 数字を置き換えない（数値正規化を無効化）
 
     Returns:
         list[int]: トークンIDのリスト

@@ -226,10 +226,18 @@ class GlobalConfig:
             section: セクション名（ログ用）
 
         Returns:
-                # List型の場合
+            Tuple[Any, bool]: 変換された値と成功フラグのタプル。
+                変換に成功した場合は (value, True)、失敗した場合は (None, False)。
+        """
+        # 型アノテーションが複雑な型（List, Dict等）の場合
+        origin = get_origin(expected_type)
+        args = get_args(expected_type)
+
+        if origin is not None:
+            if origin is list:
+                # List型の場合（typing.List または list）
                 if isinstance(value, list):
                     # 要素の型を取得
-                    args = get_args(expected_type)
                     if args:
                         element_type = args[0]
                         try:
@@ -238,47 +246,36 @@ class GlobalConfig:
                                 coerced_item, success = self._coerce_value(item, element_type, key, section)
                                 if not success:
                                     logging.warning(
-                                        f"Failed to coerce list element in {section}.{key}. Skipping entire list."
+                                        f"Type mismatch in _coerce_value: Failed to coerce list element in {section}.{key}. "
+                                        f"Expected {element_type.__name__}, but got {type(item).__name__}. Skipping entire list."
                                     )
                                     return None, False
                                 coerced_list.append(coerced_item)
                             return coerced_list, True
-                        except (ValueError, TypeError):
+                        except (ValueError, TypeError) as e:
                             logging.warning(
-                                f"Type mismatch in config.json: {section}.{key} expects List[{element_type.__name__}], "
-                                f"but got {type(value).__name__}. Skipping assignment."
+                                f"Type mismatch in _coerce_value: {section}.{key} expects List[{element_type.__name__}], "
+                                f"but got {type(value).__name__}. Error: {e}. Skipping assignment."
                             )
                             return None, False
-                    return value, True
-
-        # 型アノテーションが複雑な型（List, Dict等）の場合
-        if origin is not None:
-            if origin is list:
-                # List型の場合
-                if isinstance(value, list):
-                    # 要素の型を取得
-                    args = get_args(expected_type)
-                    if args:
-                        element_type = args[0]
-                        try:
-                            coerced_list = [self._coerce_value(item, element_type, key, section)[0]
-                                          for item in value]
-                            return coerced_list, True
-                        except (ValueError, TypeError):
-                            logging.warning(
-                                f"Type mismatch in config.json: {section}.{key} expects List[{element_type.__name__}], "
-                                f"but got {type(value).__name__}. Skipping assignment."
-                            )
-                            return None, False
-                    return value, True
+                    else:
+                        # 型引数がない場合はそのまま返す
+                        return value, True
                 else:
                     logging.warning(
-                        f"Type mismatch in config.json: {section}.{key} expects list, "
+                        f"Type mismatch in _coerce_value: {section}.{key} expects list, "
                         f"but got {type(value).__name__}. Skipping assignment."
                     )
                     return None, False
             # 他の複雑な型（Dict等）は将来の拡張用
-            return value, isinstance(value, origin)
+            if isinstance(value, origin):
+                return value, True
+            else:
+                logging.warning(
+                    f"Type mismatch in _coerce_value: {section}.{key} expects {origin.__name__}, "
+                    f"but got {type(value).__name__}. Skipping assignment."
+                )
+                return None, False
 
         # 基本型への変換を試みる
         try:

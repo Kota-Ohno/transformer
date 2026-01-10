@@ -7,11 +7,16 @@ from typing import Dict, Any, Set, Optional
 from . import constants
 
 # 評価指標用のダウンロード
-def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> None:
+def download_nltk_resources(
+    all_resources: Optional[Set[str]] = None,
+    critical_resources: Optional[Set[str]] = None,
+) -> None:
     """必要なnltkリソースをダウンロードします。環境変数でスキップ可能。
 
     Args:
-        critical_resources: ダウンロードするリソースのセット。これらのダウンロードに失敗した場合は
+        all_resources: ダウンロードするすべてのリソースのセット。Noneの場合は
+            critical_resourcesを使用します。デフォルトはNone。
+        critical_resources: 重要なリソースのセット。これらのダウンロードに失敗した場合は
             例外を再発生させます。デフォルトは{'punkt'}。
 
     Raises:
@@ -24,6 +29,9 @@ def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> No
 
     if critical_resources is None:
         critical_resources = {'punkt'}
+
+    if all_resources is None:
+        all_resources = critical_resources
 
     try:
 
@@ -41,7 +49,7 @@ def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> No
         nltk.data.path.insert(0, nltk_data_dir)
 
         # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
-        for resource in critical_resources:
+        for resource in all_resources:
             try:
                 logging.info(f"nltk resource {resource} をダウンロードしています...")
                 nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
@@ -52,10 +60,8 @@ def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> No
                     f"nltk resource '{resource}' のダウンロードに失敗しました: {e}\n"
                     f"完全な例外情報:\n{exception_traceback}"
                 )
-                # 重要なリソースの場合は例外を再発生させて早期失敗
                 if resource in critical_resources:
                     raise
-                # 非重要なリソースの場合は続行
 
     except Exception as e:
         logging.error(f"nltkリソースのダウンロード中にエラーが発生しました: {e}")

@@ -6,7 +6,9 @@ import glob
 import torch
 import logging
 import traceback
+import hashlib
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Dict, Any
 import torch.nn as nn
 import torch.optim as optim
@@ -17,6 +19,68 @@ def setup_checkpointing_directory() -> str:
     checkpoint_dir = os.path.join("models", "checkpoints")
     os.makedirs(checkpoint_dir, exist_ok=True)
     return checkpoint_dir
+
+def is_trusted_checkpoint_path(checkpoint_path: str) -> bool:
+    """
+    チェックポイントパスが信頼できるソースからのものかどうかを判定します。
+
+    信頼できるソース:
+    - models/checkpoints/ ディレクトリ内のファイル（自分たちが保存したチェックポイント）
+    - models/ ディレクトリ内の .pth ファイル（自分たちが保存したモデル）
+
+    Args:
+        checkpoint_path: チェックポイントファイルのパス
+
+    Returns:
+        信頼できるパスの場合はTrue、そうでない場合はFalse
+    """
+    try:
+        # 絶対パスに変換して正規化
+        abs_path = os.path.abspath(checkpoint_path)
+        abs_path_obj = Path(abs_path)
+
+        # 信頼できるディレクトリのリスト
+        trusted_dirs = [
+            os.path.abspath("models/checkpoints"),
+            os.path.abspath("models"),
+        ]
+
+        # チェックポイントファイルが信頼できるディレクトリ内にあるか確認
+        for trusted_dir in trusted_dirs:
+            trusted_dir_obj = Path(trusted_dir)
+            try:
+                # 相対パスで判定（シンボリックリンク対策）
+                abs_path_obj.relative_to(trusted_dir_obj)
+                return True
+            except ValueError:
+                # 相対パスでない場合は次のディレクトリをチェック
+                continue
+
+        return False
+    except Exception as e:
+        logging.warning(f"チェックポイントパスの信頼性チェック中にエラーが発生しました: {e}")
+        return False
+
+def calculate_file_hash(file_path: str) -> Optional[str]:
+    """
+    ファイルのSHA256ハッシュを計算します。
+
+    Args:
+        file_path: ファイルのパス
+
+    Returns:
+        SHA256ハッシュ値（16進数文字列）、エラー時はNone
+    """
+    try:
+        sha256_hash = hashlib.sha256()
+        with open(file_path, "rb") as f:
+            # 大きなファイルでもメモリ効率的に処理
+            for byte_block in iter(lambda: f.read(4096), b""):
+                sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
+    except Exception as e:
+        logging.warning(f"ファイルハッシュの計算中にエラーが発生しました: {e}")
+        return None
 
 def save_checkpoint(
     model: nn.Module,
@@ -144,39 +208,99 @@ def load_checkpoint(
     checkpoint_path: str,
     model: nn.Module,
     optimizer: Optional[optim.Optimizer] = None,
-    scheduler: Optional[Any] = None
+    scheduler: Optional[Any] = None,
+    trusted_paths: Optional[list[str]] = None
 ) -> Dict[str, Any]:
     """
-    チェックポイントからモデルを読み込みます
+    チェックポイントからモデルを読み込みます。
+
+    セキュリティ対策として、信頼できないソースからのチェックポイントは
+    weights_only=Trueで読み込みます（pickleによる任意コード実行を防止）。
 
     Args:
         checkpoint_path: チェックポイントファイルのパス
         model: モデル
         optimizer: オプティマイザ（オプション）
         scheduler: スケジューラ（オプション）
+        trusted_paths: 信頼できるパスのリスト（オプション、指定時はこのリストを優先）
 
     Returns:
         dict: チェックポイントの情報を含む辞書
+
+    Raises:
+        FileNotFoundError: チェックポイントファイルが見つからない場合
+        RuntimeError: チェックポイントの読み込みに失敗した場合
     """
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"チェックポイントファイルが見つかりません: {checkpoint_path}")
+
     try:
         logging.info(f"チェックポイントを読み込んでいます: {checkpoint_path}")
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        checkpoint = torch.load(checkpoint_path, map_location=device)
 
+        # 信頼性チェック
+        is_trusted = False
+        if trusted_paths is not None:
+            # 明示的に信頼できるパスが指定されている場合
+            abs_checkpoint_path = os.path.abspath(checkpoint_path)
+            is_trusted = any(
+                os.path.abspath(trusted_path) == abs_checkpoint_path
+                for trusted_path in trusted_paths
+            )
+        else:
+            # デフォルトの信頼性チェック（models/checkpoints/ または models/ 内かどうか）
+            is_trusted = is_trusted_checkpoint_path(checkpoint_path)
+
+        # 信頼できないソースからの読み込みの場合は weights_only=True を使用
+        if not is_trusted:
+            logging.warning(
+                f"信頼できないソースからのチェックポイント読み込みを検出しました: {checkpoint_path}\n"
+                f"weights_only=True で読み込みます（model_config などのカスタムメタデータは読み込めません）。"
+            )
+            try:
+                checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
+            except Exception as weights_only_error:
+                logging.error(
+                    f"weights_only=True での読み込みに失敗しました: {weights_only_error}\n"
+                    f"このチェックポイントは信頼できないソースからのものである可能性があります。"
+                )
+                raise RuntimeError(
+                    f"信頼できないチェックポイントの読み込みに失敗しました: {weights_only_error}"
+                ) from weights_only_error
+        else:
+            # 信頼できるソースからの読み込み（後方互換性のため通常の読み込み）
+            logging.info(f"信頼できるソースからのチェックポイントを読み込みます: {checkpoint_path}")
+            checkpoint = torch.load(checkpoint_path, map_location=device)
+
+        # チェックポイントの構造を確認
+        if not isinstance(checkpoint, dict):
+            raise ValueError(f"チェックポイントは辞書形式である必要があります。実際の型: {type(checkpoint)}")
+
+        if 'model_state_dict' not in checkpoint:
+            raise ValueError("チェックポイントに 'model_state_dict' が含まれていません。")
+
+        # モデルの状態辞書を読み込み
         model.load_state_dict(checkpoint['model_state_dict'])
 
+        # オプティマイザの状態辞書を読み込み
         if optimizer is not None and 'optimizer_state_dict' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
+        # スケジューラの状態辞書を読み込み
         if scheduler is not None and checkpoint.get('scheduler_state_dict') is not None:
             scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
+        # メタデータを取得（信頼できないソースの場合は欠落している可能性がある）
         epoch = checkpoint.get('epoch', 0)
         val_loss = checkpoint.get('val_loss', float('inf'))
         bleu_score = checkpoint.get('bleu_score', 0.0)
-
-        # モデル設定情報を取得
         model_config = checkpoint.get('model_config', {})
+
+        if not is_trusted and not model_config:
+            logging.warning(
+                "信頼できないソースからのチェックポイントのため、model_config は読み込めませんでした。"
+                "デフォルト設定が使用されます。"
+            )
 
         logging.info(f"チェックポイントを読み込みました (エポック {epoch}, 検証損失 {val_loss:.4f}, BLEU {bleu_score:.4f})")
 
@@ -189,10 +313,12 @@ def load_checkpoint(
             'model_config': model_config
         }
 
+    except FileNotFoundError:
+        raise
     except Exception as e:
         logging.error(f"チェックポイントの読み込みに失敗しました: {e}")
         logging.error(traceback.format_exc())
-        raise
+        raise RuntimeError(f"チェックポイントの読み込みに失敗しました: {e}") from e
 
 def find_latest_checkpoint() -> Optional[str]:
     """

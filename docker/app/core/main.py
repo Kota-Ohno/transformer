@@ -169,7 +169,7 @@ def show_config_summary():
         # 予期しないAttributeErrorをキャッチ
         logging.error(f"CONFIG属性へのアクセス中にエラーが発生しました: {e}")
         print(f"\n{Colors.ERROR}警告: 設定情報の取得中にエラーが発生しました: {e}{Colors.RESET}\n")
-        return
+        sys.exit(1)
 
 def main():
     """メイン関数"""

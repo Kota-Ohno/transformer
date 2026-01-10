@@ -136,8 +136,11 @@ def _load_and_prepare_data(
         ValueError: データファイルの読み込みに失敗した場合
         RuntimeError: SentencePieceモデルファイルが見つからない場合
     """
-    # NLTK リソースのダウンロード
-    download_nltk_resources()
+    # NLTK リソースのダウンロード（オプションが指定されていない場合のみ）
+    if not args.no_nltk_download:
+        download_nltk_resources()
+    else:
+        logging.info("NLTKリソースのダウンロードをスキップします")
 
     # トークナイズ済みデータのパス
     train_data_path = "tokenized_train_data.pth"

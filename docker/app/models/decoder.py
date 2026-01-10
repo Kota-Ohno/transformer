@@ -161,12 +161,12 @@ class Decoder(nn.Module):
         # 位置エンコーディングのオフセットを計算
         # キャッシュが存在する場合、既に処理済みのトークン数を取得
         pos_offset = 0
-        if cache is not None and len(cache) > 0 and cache[0] is not None:
+        if len(cache) > 0 and cache[0] is not None:
             # 最初のレイヤーのキャッシュから既に処理済みのシーケンス長を取得
             layer_cache = cache[0]
             if isinstance(layer_cache, dict) and 'self_k' in layer_cache:
                 cached_k = layer_cache['self_k']
-                if cached_k is not None and cached_k.dim() >= 2:
+                if cached_k is not None and (cached_k.dim() == 3 or cached_k.dim() >= 3):
                     # cached_kの形状: [batch_size, cached_seq_len, d_model]
                     pos_offset = cached_k.size(1)
 

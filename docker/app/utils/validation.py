@@ -46,14 +46,18 @@ def validate_token_ids(
                 f"Input shape: {x.shape}, vocab_size: {vocab_size}"
             )
     else:
-        # 本番モード: GPU側のブールチェック（.item()でGPU→CPU同期が発生）
+        # 本番モード: GPU側のブールチェック
+        # 意図: 本番環境でのGPU→CPU同期を最小化するため、単一のis_valid.item()チェックのみを実行
+        # 注意: is_valid.item()は毎回GPU→CPU同期を強制する
         is_valid = torch.all((x >= 0) & (x < vocab_size))
         if not is_valid.item():
-            # エラー時のみ詳細情報を取得（この時点で同期は発生するが、エラー時のみ）
+            # エラー時のみ詳細情報を取得
+            # 注意: 以下のtensor.item()/cpu()呼び出しは、エラーブランチが実行された場合のみ追加のGPU→CPU同期を発生させる
             x_min = x.min().item()
             x_max = x.max().item()
 
             # 無効な値の詳細情報を取得（デバッグ用）
+            # 注意: 以下の操作はエラー時のみ実行され、追加のGPU→CPU同期を発生させる
             invalid_mask = (x < 0) | (x >= vocab_size)
             invalid_indices = torch.nonzero(invalid_mask, as_tuple=False)
             invalid_values = x[invalid_mask]

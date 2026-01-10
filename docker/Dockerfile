@@ -12,13 +12,17 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     python -m spacy download en_core_web_md && \
     python -m spacy download ja_core_news_md
 
+# エントリーポイントスクリプトをコピー
+COPY entrypoint.sh /src/entrypoint.sh
+
 # アプリケーションコードをコピー
 COPY app/ .
 
 # 非rootユーザーの作成
 RUN groupadd -r transformer && \
     useradd -r -g transformer -u 1000 transformer && \
-    chown -R transformer:transformer /src
+    chown -R transformer:transformer /src && \
+    chmod +x /src/entrypoint.sh
 
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
@@ -35,5 +39,5 @@ USER transformer
 # アプリケーションがリッスンするポートを公開
 EXPOSE 6000
 
-# アプリケーションのエントリーポイント
-ENTRYPOINT ["python", "-m", "core.main"]
+# アプリケーションのエントリーポイント（CUDA可用性を自動検出）
+ENTRYPOINT ["/src/entrypoint.sh"]

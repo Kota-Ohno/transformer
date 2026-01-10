@@ -72,3 +72,50 @@ def test_normalize_text_whitespace_normalization():
     # 複数の空白が1つに正規化される
     assert "  " not in result
     assert "multiple spaces here" in result
+
+
+def test_normalize_text_with_empty_string_numeric():
+    """normalize_numeric='' で数値正規化が無効になることをテスト"""
+    text = "I have 123 apples and 45 oranges."
+
+    # 空文字列を渡すと数値正規化が無効になる
+    result = normalize_text(text, "en_US", normalize_numeric='')
+    assert "123" in result
+    assert "45" in result
+    assert "<NUM>" not in result
+
+    # None の場合と同様の動作
+    result_none = normalize_text(text, "en_US", normalize_numeric=None)
+    assert result == result_none
+
+
+def test_normalize_numeric_parameter_variations():
+    """normalize_numeric パラメータの様々な値の動作をテスト"""
+    text = "Price is 999 dollars."
+
+    # デフォルト値（'<NUM>'）で数値が置き換えられる
+    result_default = normalize_text(text, "en_US")
+    assert "<NUM>" in result_default
+    assert "999" not in result_default
+
+    # カスタムトークンで数値が置き換えられる
+    result_custom = normalize_text(text, "en_US", normalize_numeric="<NUMBER>")
+    assert "<NUMBER>" in result_custom
+    assert "999" not in result_custom
+
+    # None で数値が置き換えられない
+    result_none = normalize_text(text, "en_US", normalize_numeric=None)
+    assert "999" in result_none
+    assert "<NUM>" not in result_none
+
+    # False で数値が置き換えられない
+    result_false = normalize_text(text, "en_US", normalize_numeric=False)
+    assert "999" in result_false
+    assert "<NUM>" not in result_false
+
+    # 空文字列で数値が置き換えられない
+    result_empty = normalize_text(text, "en_US", normalize_numeric='')
+    assert "999" in result_empty
+    assert "<NUM>" not in result_empty
+    # None と空文字列は同じ動作
+    assert result_none == result_empty
