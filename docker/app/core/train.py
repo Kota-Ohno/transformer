@@ -68,12 +68,13 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 def _check_and_setup_gpu(args: argparse.Namespace) -> torch.device:
     """
     GPU環境をチェックし、必要に応じて高速モードを自動有効化します。
+    デバイスの決定はこの関数で一元管理されます。
 
     Args:
         args: コマンドライン引数オブジェクト
 
     Returns:
-        使用するデバイス
+        使用するデバイス（torch.device）。CUDAが利用できない場合はCPUを返します。
     """
     # CONFIGからデバイスを取得（フォールバック処理済み）
     device = CONFIG.get_device()
@@ -228,6 +229,7 @@ def _create_data_loaders(
         (train_loader, val_loader, adjusted_batch_size, device)のタプル
     """
     # GPU情報のログ記録とメモリキャッシュのクリア
+    # 注意: deviceの再代入は行わない（_check_and_setup_gpuで既に決定済み）
     if device.type == 'cuda':
         try:
             if torch.cuda.is_available():
@@ -235,11 +237,9 @@ def _create_data_loaders(
                 logging.info(f"GPU: {gpu_props.name}, Memory: {gpu_props.total_memory / BYTES_PER_MB:.0f}MB")
                 torch.cuda.empty_cache()
             else:
-                logging.warning("CUDAが利用できないため、CPUにフォールバックします。")
-                device = torch.device('cpu')
+                logging.warning("CUDAが利用できないため、CPUモードで続行します。")
         except (RuntimeError, AssertionError) as e:
-            logging.warning(f"CUDAデバイスへのアクセスに失敗しました: {e}。CPUにフォールバックします。")
-            device = torch.device('cpu')
+            logging.warning(f"CUDAデバイスへのアクセスに失敗しました: {e}。CPUモードで続行します。")
 
     # データセットとデータローダーの作成
     train_dataset = set_data(train_token_ids, train_token_ids)
@@ -274,10 +274,17 @@ def _create_data_loaders(
         logging.info(f"勾配蓄積ステップ数: {grad_accum_steps}, 実効バッチサイズ: {effective_batch_size}")
 
     # パディングトークンIDを取得
-    if output_vocab is not None:
-        pad_token_id = output_vocab['<pad>']
-    else:
-        pad_token_id = 0  # デフォルト値（後方互換性のため）
+    if output_vocab is None:
+        raise ValueError(
+            "output_vocabがNoneです。パディングトークンIDを取得するために、"
+            "有効なoutput_vocab辞書を提供してください。"
+        )
+    if '<pad>' not in output_vocab:
+        raise ValueError(
+            "output_vocabに'<pad>'キーが存在しません。"
+            "有効なoutput_vocab辞書を提供してください。"
+        )
+    pad_token_id = output_vocab['<pad>']
 
     # collate_fnをラップしてpad_token_idを渡す（pickle可能にするためfunctools.partialを使用）
     from functools import partial
@@ -431,7 +438,12 @@ def _setup_training_components(
         (optimizer, criterion, scheduler, scaler)のタプル
     """
     # パディングインデックスを取得（モデルから取得）
-    tgt_pad_idx = model.tgt_pad_idx if hasattr(model, 'tgt_pad_idx') else 0
+    if not hasattr(model, 'tgt_pad_idx'):
+        raise RuntimeError(
+            f"モデル（{type(model).__name__}）にtgt_pad_idx属性が存在しません。"
+            "モデルの初期化時にtgt_pad_idxが設定されていることを確認してください。"
+        )
+    tgt_pad_idx = model.tgt_pad_idx
 
     # 損失関数とオプティマイザの設定
     criterion = nn.CrossEntropyLoss(ignore_index=tgt_pad_idx)

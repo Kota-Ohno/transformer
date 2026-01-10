@@ -20,8 +20,7 @@ wandb==0.15.5
 tensorboard==2.13.0
 
 # Error handling enhancement
-# better-exceptionsは非推奨のため削除
-# 必要に応じて rich や friendly-traceback などの代替ライブラリを使用可能
+rich>=13.0.0
 
 # Testing
 pytest==7.4.2

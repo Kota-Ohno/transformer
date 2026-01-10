@@ -253,8 +253,19 @@ docker run --rm \
 
 #### テストの組織化
 
-- テストファイルは`docker/app/`配下に配置
-- テストファイル名は`test_*.py`または`*_test.py`の形式
+テストファイルの配置には以下の2つのパターンがあります：
+
+**Pattern A: モジュールと同一ディレクトリに配置（推奨）**
+- テストファイルを対象モジュールと同じディレクトリに配置します
+- 例: `docker/app/models/test_*.py`、`docker/app/data/test_*.py`、`docker/app/models/*_test.py`、`docker/app/data/*_test.py`
+
+**Pattern B: 専用のtestsディレクトリに配置**
+- テストファイルを`docker/app/tests/`ディレクトリに集約します
+- 例: `docker/app/tests/test_*.py`、`docker/app/tests/*_test.py`
+
+**推奨**: Pattern A（モジュールと同一ディレクトリ）を推奨します。テストと実装コードが近くに配置されるため、保守性が向上します。
+
+- テストファイル名は`test_*.py`または`*_test.py`の形式にしてください
 - フィクスチャは`conftest.py`に定義（pytestが自動的に検出）
 - モックライブラリとして`unittest.mock`を使用（標準ライブラリ）
 

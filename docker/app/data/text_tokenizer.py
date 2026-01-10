@@ -168,7 +168,9 @@ class TextTokenizer:
         メモリ内のモデルをシリアライズして保存します。
 
         Args:
-            model_path: 保存先のパス（.model拡張子なし）
+            model_path: 保存先のパス（.model拡張子付きまたはなし、どちらでも可）。
+                       拡張子がない場合は自動的に.modelが追加されます。
+                       trainメソッドから呼び出される場合、.model拡張子付きのパスが渡されることがあります。
             is_source: Trueの場合はソースモデル、Falseの場合はターゲットモデルを保存
 
         Raises:
