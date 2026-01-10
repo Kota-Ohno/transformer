@@ -263,12 +263,19 @@ class GlobalConfig:
                         element_type = args[0]
                         try:
                             coerced_list = []
+                            # 型名を安全に取得
+                            element_type_name = getattr(element_type, "__name__", None)
+                            if element_type_name is None:
+                                if isinstance(element_type, str):
+                                    element_type_name = element_type
+                                else:
+                                    element_type_name = str(element_type) or repr(element_type)
                             for item in value:
                                 coerced_item, success = self._coerce_value(item, element_type, key, section)
                                 if not success:
                                     logging.warning(
                                         f"Type mismatch in _coerce_value: Failed to coerce list element in {section}.{key}. "
-                                        f"Expected {element_type.__name__}, but got {type(item).__name__}. Skipping entire list."
+                                        f"Expected {element_type_name}, but got {type(item).__name__}. Skipping entire list."
                                     )
                                     return None, False
                                 coerced_list.append(coerced_item)

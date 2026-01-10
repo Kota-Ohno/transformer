@@ -45,8 +45,9 @@ def download_nltk_resources(
         nltk_data_dir = os.path.abspath(nltk_data_dir)
         os.makedirs(nltk_data_dir, exist_ok=True)
 
-        # nltk.data.pathの先頭にカスタムディレクトリを追加
-        nltk.data.path.insert(0, nltk_data_dir)
+        # nltk.data.pathの先頭にカスタムディレクトリを追加（idempotent）
+        if nltk_data_dir not in nltk.data.path:
+            nltk.data.path.insert(0, nltk_data_dir)
 
         # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
         for resource in all_resources:
@@ -62,10 +63,6 @@ def download_nltk_resources(
                 )
                 if resource in critical_resources:
                     raise
-
-    except Exception as e:
-        logging.error(f"nltkリソースのダウンロード中にエラーが発生しました: {e}")
-        raise
 
 # --- マスク生成関数 ---
 def create_padding_mask(seq: torch.Tensor, pad_idx: int) -> torch.Tensor:

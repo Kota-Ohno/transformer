@@ -167,11 +167,12 @@ def show_config_summary():
 
     except AttributeError as e:
         # 予期しないAttributeErrorをキャッチ
-        logging.error(f"CONFIG属性へのアクセス中にエラーが発生しました: {e}")
+        error_msg = f"CONFIG属性へのアクセス中にエラーが発生しました: {e}"
+        logging.error(error_msg)
         print(f"\n{Colors.ERROR}警告: 設定情報の取得中にエラーが発生しました: {e}{Colors.RESET}\n")
-        sys.exit(1)
+        raise RuntimeError(error_msg) from e
 
-def main():
+def main() -> int:
     """メイン関数"""
     # コマンドライン引数の解析
     parser = argparse.ArgumentParser(description='Transformerモデルのトレーニングを実行')
@@ -228,7 +229,10 @@ def main():
 
     # 他の引数を付けてトレーニングメイン関数を呼び出す
     # unknown_argsが空の場合はNoneを渡す（train_mainはOptional[List[str]]を受け取る）
-    train_main(unknown_args if unknown_args else None)
+    result = train_main(unknown_args if unknown_args else None)
+    if isinstance(result, int):
+        return result
+    return 0
 
 if __name__ == "__main__":
     try:

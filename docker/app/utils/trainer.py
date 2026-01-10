@@ -155,11 +155,12 @@ class Trainer:
 
     def _is_recoverable_error(self, exception):
         """回復可能なエラー（OOMなど）かどうかを判定"""
+        if not isinstance(exception, RuntimeError):
+            return False
         error_str = str(exception).lower()
-        # CUDA OOMエラーを検出
-        if isinstance(exception, RuntimeError):
-            if "out of memory" in error_str or "cuda" in error_str and "memory" in error_str:
-                return True
+        # CUDA OOMエラーのみを検出（明示的なフレーズをチェック）
+        if "out of memory" in error_str or "cuda out of memory" in error_str:
+            return True
         return False
 
     def _cleanup_after_error(self):

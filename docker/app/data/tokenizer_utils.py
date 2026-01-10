@@ -109,10 +109,12 @@ def train_and_load_sp_models(
         tgt_model_prefix = os.path.join("models", "sp_tgt")
 
     # 各プレフィックスのディレクトリを取得し、存在しない場合は作成
-    src_dir = os.path.dirname(src_model_prefix) or "models"
-    tgt_dir = os.path.dirname(tgt_model_prefix) or "models"
-    os.makedirs(src_dir, exist_ok=True)
-    os.makedirs(tgt_dir, exist_ok=True)
+    src_dir = os.path.dirname(src_model_prefix) or "."
+    tgt_dir = os.path.dirname(tgt_model_prefix) or "."
+    if src_dir != ".":
+        os.makedirs(src_dir, exist_ok=True)
+    if tgt_dir != ".":
+        os.makedirs(tgt_dir, exist_ok=True)
 
     # モデルをトレーニング
     logger.info("ソース言語のSentencePieceモデルをトレーニング中...")

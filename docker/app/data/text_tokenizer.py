@@ -56,6 +56,9 @@ class TextTokenizer:
         self.src_lang = src_lang or CONFIG.data_config.translation_source
         self.tgt_lang = tgt_lang or CONFIG.data_config.translation_destination
         self.device = CONFIG.get_device()
+        # モデルファイルのパスを追跡
+        self.sp_src_path: Optional[str] = None
+        self.sp_tgt_path: Optional[str] = None
 
     @classmethod
     def train(
@@ -150,15 +153,17 @@ class TextTokenizer:
             logger.error(f"モデルの読み込み中にエラーが発生しました: {e}")
             raise
 
-        return cls(sp_src=sp_src, sp_tgt=sp_tgt)
+        # インスタンスを作成してパスを設定
+        instance = cls(sp_src=sp_src, sp_tgt=sp_tgt)
+        instance.sp_src_path = model_path_src
+        instance.sp_tgt_path = model_path_tgt
+        return instance
 
     def save_model(self, model_path: str, is_source: bool = True) -> None:
-        """訓練時に保存されたSentencePieceモデルファイルを指定されたパスにコピーします。
+        """SentencePieceモデルを指定されたパスに保存します。
 
-        注意: このメソッドはモデルオブジェクトを直接シリアライズするのではなく、
-        デフォルトの場所（models/sp_src.model または models/sp_tgt.model）から
-        ファイルをコピーします。そのため、trainメソッドでモデルを訓練した後にのみ
-        使用できます。
+        まず追跡されているパスからコピーを試み、それが存在しない場合は
+        メモリ内のモデルをシリアライズして保存します。
 
         Args:
             model_path: 保存先のパス（.model拡張子なし）
@@ -166,7 +171,7 @@ class TextTokenizer:
 
         Raises:
             ValueError: モデルが初期化されていない場合
-            FileNotFoundError: 訓練時に保存されたモデルファイルが見つからない場合
+            FileNotFoundError: 追跡されているパスが存在せず、モデルもシリアライズできない場合
         """
         model = self.sp_src if is_source else self.sp_tgt
         if model is None:
@@ -174,23 +179,13 @@ class TextTokenizer:
                 f"保存するモデルが初期化されていません（is_source={is_source}）"
             )
 
-        # 訓練時に保存されたデフォルトのモデルファイルパス
-        default_model_path = (
-            os.path.join("models", "sp_src.model")
-            if is_source
-            else os.path.join("models", "sp_tgt.model")
-        )
-
-        # デフォルトのモデルファイルが存在するか確認
-        if not os.path.exists(default_model_path):
-            raise FileNotFoundError(
-                f"訓練時に保存されたモデルファイルが見つかりません: {default_model_path}。"
-                f"モデルを訓練してから保存してください。"
-            )
+        # 追跡されているパスを取得
+        tracked_path = self.sp_src_path if is_source else self.sp_tgt_path
 
         # 保存先のディレクトリを作成
         save_dir = os.path.dirname(model_path) if os.path.dirname(model_path) else "."
-        os.makedirs(save_dir, exist_ok=True)
+        if save_dir and save_dir != ".":
+            os.makedirs(save_dir, exist_ok=True)
 
         # .model拡張子を追加
         if not model_path.endswith(".model"):
@@ -204,11 +199,28 @@ class TextTokenizer:
             )
             return
 
-        # モデルファイルをコピー
+        # 追跡されているパスからコピーを試みる
+        if tracked_path and os.path.exists(tracked_path):
+            try:
+                shutil.copy2(tracked_path, model_path)
+                logger.info(
+                    f"モデルを保存しました: {tracked_path} -> {model_path} "
+                    f"(is_source={is_source})"
+                )
+                return
+            except Exception as e:
+                logger.warning(
+                    f"追跡されているパスからのコピーに失敗しました: {e}。"
+                    f"メモリ内のモデルをシリアライズして保存します。"
+                )
+
+        # フォールバック: メモリ内のモデルをシリアライズ
         try:
-            shutil.copy2(default_model_path, model_path)
+            serialized_model = model.serialized_model_proto()
+            with open(model_path, 'wb') as f:
+                f.write(serialized_model)
             logger.info(
-                f"モデルを保存しました: {default_model_path} -> {model_path} "
+                f"モデルをシリアライズして保存しました: {model_path} "
                 f"(is_source={is_source})"
             )
         except Exception as e:

@@ -2,7 +2,6 @@
 トークンID検証用のユーティリティ関数
 """
 import torch
-from typing import Tuple
 from utils.config import CONFIG
 
 

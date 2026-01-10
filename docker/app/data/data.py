@@ -99,22 +99,32 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
     X_flat = [flatten_and_convert(x) for x in X]
     Y_flat = [flatten_and_convert(y) for y in Y]
 
-    # 長さ1以下のシーケンスをフィルタリング（訓練に有用でないため除外）
-    valid_indices = [i for i, y_seq in enumerate(Y_flat) if len(y_seq) > 1]
+    # X_flatが空でないことを確認
+    if not X_flat:
+        raise ValueError(
+            "X_flat is empty after flatten_and_convert. "
+            "Please ensure your dataset contains valid input sequences."
+        )
+
+    # 長さ1以下のYシーケンスと長さ0のXシーケンスをフィルタリング（訓練に有用でないため除外）
+    valid_indices = [
+        i for i, (x_seq, y_seq) in enumerate(zip(X_flat, Y_flat))
+        if len(y_seq) > 1 and len(x_seq) > 0
+    ]
 
     if len(valid_indices) == 0:
         # バッチ内のすべてのサンプルが無効な場合
         raise ValueError(
-            "Batch contains only sequences with length <= 1. "
-            "Please ensure your dataset contains sequences with length > 1."
+            "Batch contains only invalid sequences (Y length <= 1 or X length == 0). "
+            "Please ensure your dataset contains sequences with Y length > 1 and X length > 0."
         )
 
     # 有効なサンプルのみを保持
     X_flat = [X_flat[i] for i in valid_indices]
     Y_flat = [Y_flat[i] for i in valid_indices]
 
-    # 最大長を計算
-    max_length_X = max([len(x) for x in X_flat], default=1)
+    # 最大長を計算（X_flatが空でないことは既に確認済み）
+    max_length_X = max([len(x) for x in X_flat])
     max_length_Y = max([len(y) for y in Y_flat], default=1)
 
     # パディングを適用
