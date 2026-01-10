@@ -14,6 +14,20 @@ from typing import List, Tuple, Optional, Callable, Any, Dict
 # データセットクラス
 class MyDataset(torch.utils.data.Dataset):
     def __init__(self, X: List, Y: List, transform: Optional[Callable] = None):
+        # XとYがシーケンスまたは__len__を持つことを確認
+        if not hasattr(X, '__len__'):
+            raise TypeError(f"X must be a sequence or have __len__, got {type(X)}")
+        if not hasattr(Y, '__len__'):
+            raise TypeError(f"Y must be a sequence or have __len__, got {type(Y)}")
+
+        # XとYの長さが一致することを確認
+        len_x = len(X)
+        len_y = len(Y)
+        if len_x != len_y:
+            raise ValueError(
+                f"X and Y must have the same length, but got len(X)={len_x} and len(Y)={len_y}"
+            )
+
         self.X = X
         self.Y = Y
         self.transform = transform

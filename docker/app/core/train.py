@@ -453,7 +453,8 @@ def _setup_training_components(
         scaler = None
 
     # 総ステップ数を計算（勾配蓄積を考慮、最低1ステップを保証）
-    grad_accum = CONFIG.training_config.gradient_accumulation_steps
+    # args.grad_accum_stepsを直接使用（_apply_fast_mode_settingsで変更された値を反映）
+    grad_accum = int(args.grad_accum_steps)
     total_batches = len(train_loader) * args.epochs
     # 天井除算: (a + b - 1) // b で実装し、max(1, ...)で最低1を保証
     total_steps = max(1, (total_batches + grad_accum - 1) // grad_accum)

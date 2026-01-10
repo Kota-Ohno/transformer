@@ -53,10 +53,13 @@ class ModelConfig:
             return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
         try:
-            total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3) # GB
+            # 動的にGPUデバイスインデックスを取得
+            device_idx = torch.cuda.current_device() if torch.cuda.is_available() else 0
+            total_memory = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) # GB
         except (RuntimeError, AssertionError) as e:
             # GPU プロパティへのアクセスに失敗した場合はデフォルト設定にフォールバック
-            print(f"Warning: Failed to access GPU properties: {e}. Using default configuration.")
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to access GPU properties: {e}. Using default configuration.")
             return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
         if total_memory >= 16:
@@ -453,9 +456,11 @@ class GlobalConfig:
             else:
                 # CUDAが利用可能な場合でも、実際にデバイスにアクセスできるか確認
                 try:
-                    # デバイス0にアクセスして確認
-                    _ = torch.cuda.get_device_properties(0)
-                    logging.info(f"CUDAデバイスが利用可能です: {torch.cuda.get_device_name(0)}")
+                    # 動的にGPUデバイスインデックスを取得
+                    device_idx = torch.cuda.current_device()
+                    device_props = torch.cuda.get_device_properties(device_idx)
+                    device_name = torch.cuda.get_device_name(device_idx)
+                    logging.info(f"CUDAデバイスが利用可能です: {device_name}")
                 except (RuntimeError, AssertionError) as e:
                     logging.warning(
                         f"CUDAデバイスへのアクセスに失敗しました: {e}。"

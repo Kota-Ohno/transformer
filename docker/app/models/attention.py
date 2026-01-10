@@ -109,7 +109,9 @@ class MultiHeadAttention(nn.Module):
 
         # キャッシュを使用するか
         if cached_k is None:
+            # キャッシュがない場合、通常の処理（両方の変換を適用）
             k = self.wk(k)
+            v = self.wv(v)
         else:
             # キャッシュの形状を検証
             # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
@@ -138,10 +140,6 @@ class MultiHeadAttention(nn.Module):
                 )
             k = cached_k
             v = cached_v
-        else:
-            # cached_kがNoneの場合、通常の処理
-            k = self.wk(k)
-            v = self.wv(v)
 
         # ヘッドに分割
         q = self.split_heads(q)  # [batch_size, num_heads, seq_len_q, d_k]

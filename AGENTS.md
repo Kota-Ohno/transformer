@@ -37,14 +37,16 @@ git commit
 git commit --amend
 ```
 
-#### 方法3: 環境変数の設定
+#### 方法3: Git設定を使用（Windows推奨）
 
-PowerShellで以下の環境変数を設定することで、UTF-8エンコーディングを強制できます：
+Windowsでは、環境変数`LANG`や`LC_ALL`の設定が期待通りに動作しない場合があります。代わりに、Gitの設定を直接変更することを推奨します：
 
-```powershell
-$env:LANG = "ja_JP.UTF-8"
-$env:LC_ALL = "ja_JP.UTF-8"
+```bash
+# GitのコミットエンコーディングをUTF-8に設定
+git config --global i18n.commitencoding utf-8
 ```
+
+**注意**: PowerShellで`$env:LANG`や`$env:LC_ALL`を設定する方法は、Windowsのロケールシステムが異なるため、期待通りに動作しない場合があります。Windows環境では、方法1（一時ファイルを使用）または方法2（Gitエディタを使用）を優先的に使用することを推奨します。
 
 ### コミットメッセージの確認
 

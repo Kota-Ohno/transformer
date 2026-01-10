@@ -143,6 +143,25 @@ MAIN_MENU = """
 
 選択してください (1-5, または 'q' で終了): """
 
+def display_topic(topic: str | None) -> None:
+    """トピックのヘルプ情報を表示するヘルパー関数
+
+    Args:
+        topic: 表示するトピック名（'all'、'tokenizer'、'train'、'predict'、'augment'のいずれか、またはNone）
+    """
+    if topic is None:
+        return
+
+    if topic == 'all':
+        # すべてのヘルプを表示
+        for func in TOPIC_FUNCTIONS.values():
+            func()
+    elif topic in TOPIC_FUNCTIONS:
+        # マッピングされた関数を呼び出し
+        TOPIC_FUNCTIONS[topic]()
+    else:
+        print("無効な選択です。もう一度試してください。")
+
 # メインの処理関数
 def main():
     while True:
@@ -160,17 +179,10 @@ def main():
         # 数字キーをトピック名に変換
         topic = NUMBER_TO_TOPIC.get(choice, choice)
 
-        if topic == 'all':
-            # すべてのヘルプを表示
-            for func in TOPIC_FUNCTIONS.values():
-                func()
-            input("続行するにはEnterキーを押してください...")
-        elif topic in TOPIC_FUNCTIONS:
-            # マッピングされた関数を呼び出し
-            TOPIC_FUNCTIONS[topic]()
+        display_topic(topic)
+        if topic == 'all' or topic in TOPIC_FUNCTIONS:
             input("続行するにはEnterキーを押してください...")
         else:
-            print("無効な選択です。もう一度試してください。")
             time.sleep(1)
 
 if __name__ == "__main__":
@@ -181,12 +193,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.topic:
-        if args.topic == 'all':
-            # すべてのヘルプを表示
-            for func in TOPIC_FUNCTIONS.values():
-                func()
-        elif args.topic in TOPIC_FUNCTIONS:
-            # マッピングされた関数を呼び出し
-            TOPIC_FUNCTIONS[args.topic]()
+        display_topic(args.topic)
     else:
         main()

@@ -166,9 +166,10 @@ class Decoder(nn.Module):
             layer_cache = cache[0]
             if isinstance(layer_cache, dict) and 'self_k' in layer_cache:
                 cached_k = layer_cache['self_k']
-                if cached_k is not None and (cached_k.dim() == 3 or cached_k.dim() >= 3):
-                    # cached_kの形状: [batch_size, cached_seq_len, d_model]
-                    pos_offset = cached_k.size(1)
+                if cached_k is not None and cached_k.dim() >= 3:
+                    # MultiHeadAttentionから返されるキャッシュの形状: [batch_size, num_heads, seq_len, d_k]
+                    # シーケンス長は次元2に格納されている
+                    pos_offset = cached_k.size(2)
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x)

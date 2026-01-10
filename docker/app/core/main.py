@@ -59,15 +59,15 @@ class ColoredFormatter(logging.Formatter):
 def setup_logging():
     """ロギングの設定"""
 
-    # ルートロガーを取得
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.INFO)
+    # モジュールスコープのロガーを取得（root_loggerを変更しない）
+    logger = logging.getLogger(__name__)
+    logger.setLevel(logging.INFO)
 
     # 既存のコンソールハンドラーをチェック（同じタイプとストリームのハンドラーが存在するか）
     formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
     has_console_handler = False
 
-    for handler in root_logger.handlers[:]:  # コピーを作成してイテレート
+    for handler in logger.handlers[:]:  # コピーを作成してイテレート
         # StreamHandlerでsys.stdoutを使用しているハンドラーを検出
         if isinstance(handler, logging.StreamHandler):
             if handler.stream is sys.stdout:
@@ -75,15 +75,13 @@ def setup_logging():
                 if isinstance(handler.formatter, ColoredFormatter):
                     has_console_handler = True
                     break
-                # 既存のStreamHandlerがsys.stdoutを使用している場合は削除（新しいフォーマッターに置き換え）
-                root_logger.removeHandler(handler)
 
     # 既存のコンソールハンドラーがない場合のみ追加
     if not has_console_handler:
         console = logging.StreamHandler(sys.stdout)
         console.setLevel(logging.INFO)
         console.setFormatter(formatter)
-        root_logger.addHandler(console)
+        logger.addHandler(console)
 
 def check_gpu_environment():
     """GPU環境の情報を収集してログに記録"""
