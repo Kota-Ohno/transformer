@@ -103,6 +103,10 @@ class MultiHeadAttention(nn.Module):
         # 線形変換
         q = self.wq(q)
 
+        # キャッシュの整合性チェック
+        if (cached_k is None) != (cached_v is None):
+            raise ValueError("cached_k and cached_v must be provided together or both be None")
+
         # キャッシュを使用するか
         if cached_k is None:
             k = self.wk(k)
@@ -117,13 +121,7 @@ class MultiHeadAttention(nn.Module):
                 raise ValueError(f"cached_k num_heads mismatch. Expected {self.num_heads}, got {cached_k.size(1)}")
             if cached_k.size(3) != self.d_k:
                 raise ValueError(f"cached_k d_k mismatch. Expected {self.d_k}, got {cached_k.size(3)}")
-            k = cached_k
-
-        if cached_v is None:
-            v = self.wv(v)
-        else:
-            # キャッシュの形状を検証
-            # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
+            # cached_vの形状も検証
             if cached_v.dim() != 4:
                 raise ValueError(f"cached_v must be 4-dimensional, got {cached_v.dim()} dimensions")
             if cached_v.size(0) != batch_size:
@@ -132,7 +130,18 @@ class MultiHeadAttention(nn.Module):
                 raise ValueError(f"cached_v num_heads mismatch. Expected {self.num_heads}, got {cached_v.size(1)}")
             if cached_v.size(3) != self.d_k:
                 raise ValueError(f"cached_v d_k mismatch. Expected {self.d_k}, got {cached_v.size(3)}")
+            # シーケンス長の一致を確認
+            if cached_k.size(2) != cached_v.size(2):
+                raise ValueError(
+                    f"cached_k and cached_v sequence length mismatch. "
+                    f"cached_k.size(2)={cached_k.size(2)}, cached_v.size(2)={cached_v.size(2)}"
+                )
+            k = cached_k
             v = cached_v
+        else:
+            # cached_kがNoneの場合、通常の処理
+            k = self.wk(k)
+            v = self.wv(v)
 
         # ヘッドに分割
         q = self.split_heads(q)  # [batch_size, num_heads, seq_len_q, d_k]

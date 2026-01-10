@@ -48,6 +48,15 @@ class PositionalEncoding(nn.Module):
         Returns:
             位置情報が加算されたテンソル [batch_size, seq_len, d_model]
         """
+        # offsetの型と非負チェック
+        if not isinstance(offset, int):
+            try:
+                offset = int(offset)
+            except (ValueError, TypeError):
+                raise ValueError(f"offset must be an integer, got {type(offset).__name__}")
+        if offset < 0:
+            raise ValueError(f"offset must be non-negative, got {offset}")
+
         seq_len = x.size(1)
         end_pos = offset + seq_len
         if end_pos > self.pe.size(1):

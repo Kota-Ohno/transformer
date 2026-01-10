@@ -273,19 +273,29 @@ class TextTokenizer:
         if return_tensors:
             # パディングを追加してテンソルに変換
             # SentencePieceモデルからpad_idを取得
-            pad_id = model.pad_id() if hasattr(model, 'pad_id') and callable(model.pad_id) else 0
+            if hasattr(model, 'pad_id') and callable(model.pad_id):
+                pad_id_value = model.pad_id()
+                pad_id = pad_id_value if pad_id_value is not None and pad_id_value >= 0 else 0
+            else:
+                pad_id = 0
+
+            # 固定の最大シーケンス長を使用
+            max_sequence_length = CONFIG.model_hyperparameters.max_seq_length
             max_len = max(len(tokens) for tokens in tokenized_texts) if tokenized_texts else 0
+            # max_lenをmax_sequence_lengthで制限
+            max_len = min(max_len, max_sequence_length)
 
             padded_tokens = []
             for tokens in tokenized_texts:
-                if len(tokens) > max_len:
-                    # シーケンスがmax_lenより長い場合は切り詰め、警告をログに記録
+                if len(tokens) > max_sequence_length:
+                    # シーケンスがmax_sequence_lengthより長い場合は切り詰め、警告をログに記録
                     logger.warning(
-                        f"トークンシーケンスがmax_len ({max_len}) を超えています "
+                        f"トークンシーケンスがmax_sequence_length ({max_sequence_length}) を超えています "
                         f"(長さ: {len(tokens)})。切り詰めます。"
                     )
-                    tokens = tokens[:max_len]
-                elif len(tokens) < max_len:
+                    tokens = tokens[:max_sequence_length]
+
+                if len(tokens) < max_len:
                     # パディングを追加
                     tokens = tokens + [pad_id] * (max_len - len(tokens))
                 # len(tokens) == max_len の場合はそのまま使用（スライシング不要）

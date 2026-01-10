@@ -183,9 +183,6 @@ def save_checkpoint(
             try:
                 old_best_models = glob.glob(os.path.join(checkpoint_dir, "best_model_*.pth"))
                 for old_file in old_best_models:
-                    # 新しく書き込んだファイルはスキップ
-                    if os.path.abspath(old_file) == os.path.abspath(best_model_path):
-                        continue
                     try:
                         os.remove(old_file)
                         logging.info(f"古い最良モデルファイルを削除しました: {old_file}")

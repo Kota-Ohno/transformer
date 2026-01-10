@@ -7,7 +7,7 @@ import logging
 from typing import Optional, List, Tuple, Dict, Any
 from packaging import version
 from data.data import create_data_loader, set_data, collate_fn
-from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
+from utils.config import CONFIG, get_input_vocab_path, get_output_vocab_path
 from utils.scheduler import WarmupScheduler
 from data.text_tokenizer import load_tokenized_data
 from data.data_augmentation import augment_dataset
@@ -165,8 +165,8 @@ def _load_and_prepare_data(
         train_token_ids = train_token_ids[:args.limit_samples]
 
     # ボキャブラリの読み込み
-    input_vocab = torch.load(INPUT_VOCAB_PATH, weights_only=True)
-    output_vocab = torch.load(OUTPUT_VOCAB_PATH, weights_only=True)
+    input_vocab = torch.load(get_input_vocab_path(), weights_only=True)
+    output_vocab = torch.load(get_output_vocab_path(), weights_only=True)
 
     # データ拡張（オプション）
     if args.augment:

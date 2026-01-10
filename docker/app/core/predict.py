@@ -5,7 +5,7 @@ import glob
 import logging
 import argparse
 from typing import Dict, Optional, Any, Callable
-from utils.config import CONFIG, INPUT_VOCAB_PATH, OUTPUT_VOCAB_PATH
+from utils.config import CONFIG, get_input_vocab_path, get_output_vocab_path
 from data.data import tokenize, tokens_to_ids, ids_to_tokens
 from models.model import create_transformer_model, TranslationModel
 from utils.constants import (
@@ -392,7 +392,7 @@ def main() -> None:
 
     # 語彙のロード
     try:
-        input_vocab = load_vocab(INPUT_VOCAB_PATH)
+        input_vocab = load_vocab(get_input_vocab_path())
     except FileNotFoundError as e:
         logging.error(f"エラー: {e}")
         sys.exit(1)
@@ -401,7 +401,7 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        output_vocab = load_vocab(OUTPUT_VOCAB_PATH)
+        output_vocab = load_vocab(get_output_vocab_path())
     except FileNotFoundError as e:
         logging.error(f"エラー: {e}")
         sys.exit(1)

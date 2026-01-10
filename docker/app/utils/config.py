@@ -88,6 +88,26 @@ class ModelHyperparameters:
     max_seq_length: int = 512
     rel_pos_max_distance: int = 128
 
+    @classmethod
+    def from_model_config(cls, model_config: ModelConfig) -> "ModelHyperparameters":
+        """ModelConfigからModelHyperparametersインスタンスを作成します。
+
+        Args:
+            model_config: ModelConfigインスタンス
+
+        Returns:
+            ModelHyperparameters: 変換されたModelHyperparametersインスタンス
+        """
+        return cls(
+            hidden_size=model_config.hidden_size,
+            num_heads=model_config.num_heads,
+            num_layers=model_config.num_layers,
+            d_ff=model_config.d_ff,
+            dropout_rate=model_config.dropout_rate,
+            max_seq_length=model_config.max_seq_length,
+            rel_pos_max_distance=model_config.rel_pos_max_distance
+        )
+
 @dataclass
 class TrainingConfig:
     num_epochs: int = 10
@@ -134,6 +154,27 @@ class GlobalConfig:
     device: str = field(default_factory=lambda: 'cuda' if torch.cuda.is_available() else 'cpu')
     verbose_mask_logs: bool = False
 
+    def _apply_env_overrides(self):
+        """
+        環境変数から設定をオーバーライドし、デバイスを検証します。
+
+        このメソッドは、環境変数からのオーバーライドとデバイス検証を
+        一括で実行します。__post_init__とreload_from_envの両方で使用されます。
+        """
+        # 環境変数からのオーバーライド（最高優先度、ネストされたフィールドも正しくオーバーライド）
+        self._override_from_env(self.model_hyperparameters, "TRANSFORMER_MODEL_")
+        self._override_from_env(self.training_config, "TRANSFORMER_TRAINING_")
+        self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
+        self._override_from_env(self, "TRANSFORMER_GLOBAL_")
+
+        # TRANSFORMER_DEVICE環境変数もサポート（後方互換性のため）
+        device_env = os.getenv("TRANSFORMER_DEVICE")
+        if device_env is not None:
+            self.device = device_env.lower()
+
+        # デバイスの検証とフォールバック処理
+        self._validate_and_fallback_device()
+
     def __post_init__(self):
         """
         設定の初期化処理。
@@ -145,30 +186,13 @@ class GlobalConfig:
         """
         # GPUメモリに基づいてモデルのハイパーパラメータを調整
         adjusted_model_config = ModelConfig.from_gpu_memory()
-        self.model_hyperparameters.hidden_size = adjusted_model_config.hidden_size
-        self.model_hyperparameters.num_heads = adjusted_model_config.num_heads
-        self.model_hyperparameters.num_layers = adjusted_model_config.num_layers
-        self.model_hyperparameters.d_ff = adjusted_model_config.d_ff
-        self.model_hyperparameters.dropout_rate = adjusted_model_config.dropout_rate
-        self.model_hyperparameters.max_seq_length = adjusted_model_config.max_seq_length
-        self.model_hyperparameters.rel_pos_max_distance = adjusted_model_config.rel_pos_max_distance
+        self.model_hyperparameters = ModelHyperparameters.from_model_config(adjusted_model_config)
 
         # config.jsonからのオーバーライド（最初に読み込む）
         self._load_from_json("config.json")
 
-        # 環境変数からのオーバーライド（最高優先度、ネストされたフィールドも正しくオーバーライド）
-        self._override_from_env(self.model_hyperparameters, "TRANSFORMER_MODEL_")
-        self._override_from_env(self.training_config, "TRANSFORMER_TRAINING_")
-        self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
-        self._override_from_env(self, "TRANSFORMER_GLOBAL_")
-
-        # TRANSFORMER_DEVICE環境変数もサポート（後方互換性のため）
-        device_env = os.getenv("TRANSFORMER_DEVICE")
-        if device_env is not None:
-            self.device = device_env.lower()
-
-        # デバイスの検証とフォールバック処理
-        self._validate_and_fallback_device()
+        # 環境変数からのオーバーライドとデバイス検証
+        self._apply_env_overrides()
 
     def reload_from_env(self):
         """
@@ -177,19 +201,8 @@ class GlobalConfig:
         このメソッドは、環境変数が動的に変更された後に呼び出すことで、
         設定を最新の環境変数の値に更新できます。
         """
-        # 環境変数からのオーバーライド（最高優先度、ネストされたフィールドも正しくオーバーライド）
-        self._override_from_env(self.model_hyperparameters, "TRANSFORMER_MODEL_")
-        self._override_from_env(self.training_config, "TRANSFORMER_TRAINING_")
-        self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
-        self._override_from_env(self, "TRANSFORMER_GLOBAL_")
-
-        # TRANSFORMER_DEVICE環境変数もサポート（後方互換性のため）
-        device_env = os.getenv("TRANSFORMER_DEVICE")
-        if device_env is not None:
-            self.device = device_env.lower()
-
-        # デバイスの検証とフォールバック処理
-        self._validate_and_fallback_device()
+        # 環境変数からのオーバーライドとデバイス検証
+        self._apply_env_overrides()
 
     def _get_expected_type(self, obj: Any, key: str):
         """
@@ -236,6 +249,14 @@ class GlobalConfig:
         if origin is not None:
             if origin is list:
                 # List型の場合（typing.List または list）
+                # 文字列の場合はカンマ区切りとして扱う
+                if isinstance(value, str):
+                    # 空の文字列は空のリストとして扱う
+                    if not value.strip():
+                        return [], True
+                    # カンマ区切りで分割
+                    value = [item.strip() for item in value.split(",")]
+
                 if isinstance(value, list):
                     # 要素の型を取得
                     if args:
@@ -330,6 +351,10 @@ class GlobalConfig:
             return None, False
 
     def _override_from_env(self, obj: Any, prefix: str):
+        # dataclassでない場合はスキップ
+        if not is_dataclass(obj):
+            return
+
         for field_name in obj.__dataclass_fields__:
             # フィールドの現在の値を取得
             current_value = getattr(obj, field_name, None)
@@ -341,49 +366,14 @@ class GlobalConfig:
             env_value = os.getenv(env_var_name)
             if env_value is not None:
                 original_type = obj.__dataclass_fields__[field_name].type
-                try:
-                    if original_type is int:
-                        setattr(obj, field_name, int(env_value))
-                    elif original_type is float:
-                        setattr(obj, field_name, float(env_value))
-                    elif original_type is bool:
-                        setattr(obj, field_name, env_value.lower() in ("true", "yes", "1"))
-                    elif get_origin(original_type) is list:
-                        # 空の環境変数値は空のリストとして扱う
-                        if not env_value.strip():
-                            setattr(obj, field_name, [])
-                        else:
-                            # 要素型を取得
-                            args = get_args(original_type)
-                            if args:
-                                element_type = args[0]
-                                try:
-                                    # 各要素を要素型に変換
-                                    converted_items = []
-                                    for item in env_value.split(","):
-                                        stripped_item = item.strip()
-                                        if element_type is int:
-                                            converted_items.append(int(stripped_item))
-                                        elif element_type is float:
-                                            converted_items.append(float(stripped_item))
-                                        elif element_type is bool:
-                                            converted_items.append(stripped_item.lower() in ("true", "yes", "1"))
-                                        elif element_type is str:
-                                            converted_items.append(stripped_item)
-                                        else:
-                                            # サポートされていない型の場合は文字列として扱う
-                                            converted_items.append(stripped_item)
-                                    setattr(obj, field_name, converted_items)
-                                except (ValueError, TypeError):
-                                    # 変換に失敗した場合は文字列の動作にフォールバック
-                                    setattr(obj, field_name, [item.strip() for item in env_value.split(",")])
-                            else:
-                                # 型引数がない場合は文字列の動作にフォールバック
-                                setattr(obj, field_name, [item.strip() for item in env_value.split(",")])
-                    else:
-                        setattr(obj, field_name, env_value)
-                except ValueError:
-                    print(f"Warning: Could not convert environment variable {env_var_name}='{env_value}' to type {original_type}.")
+                # _coerce_valueを使用して型変換（カンマ区切りリストもサポート）
+                coerced_value, success = self._coerce_value(env_value, original_type, field_name, prefix.rstrip("_"))
+                if success:
+                    setattr(obj, field_name, coerced_value)
+                else:
+                    logging.warning(
+                        f"Could not convert environment variable {env_var_name}='{env_value}' to type {original_type}."
+                    )
 
     def _load_from_json(self, config_path: str):
         """
@@ -471,5 +461,19 @@ class GlobalConfig:
 CONFIG = GlobalConfig()
 
 
-INPUT_VOCAB_PATH = CONFIG.data_config.input_vocab_path
-OUTPUT_VOCAB_PATH = CONFIG.data_config.output_vocab_path
+def get_input_vocab_path() -> str:
+    """入力語彙パスを取得します。
+
+    Returns:
+        入力語彙ファイルのパス
+    """
+    return CONFIG.data_config.input_vocab_path
+
+
+def get_output_vocab_path() -> str:
+    """出力語彙パスを取得します。
+
+    Returns:
+        出力語彙ファイルのパス
+    """
+    return CONFIG.data_config.output_vocab_path

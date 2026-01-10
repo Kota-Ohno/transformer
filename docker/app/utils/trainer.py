@@ -478,9 +478,26 @@ class Trainer:
                             # whileループが継続してリトライ
                         else:
                             logging.error(f"エポック {epoch+1} で最大リトライ回数 ({self.max_epoch_retries}) に達しました。"
-                                         f"このエポックをスキップして次のエポックに進みます。")
-                            epoch_completed = True  # リトライを諦めて次のエポックへ
-                            break
+                                         f"チェックポイントを保存してトレーニングを停止します。")
+                            # チェックポイントを保存してから停止
+                            try:
+                                save_checkpoint(
+                                    model=self.model,
+                                    optimizer=self.optimizer,
+                                    scheduler=self.scheduler,
+                                    epoch=epoch,
+                                    val_loss=self.last_valid_loss if self.last_valid_loss is not None else float('inf'),
+                                    bleu_score=self.last_bleu if self.last_bleu is not None else 0.0,
+                                    is_best=False,
+                                    model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
+                                    model_num_heads=CONFIG.model_hyperparameters.num_heads,
+                                    model_num_layers=CONFIG.model_hyperparameters.num_layers
+                                )
+                                logging.info(f"OOMエラー後のチェックポイントを保存しました（エポック {epoch+1}）")
+                            except Exception as checkpoint_error:
+                                logging.error(f"チェックポイントの保存に失敗しました: {checkpoint_error}")
+                            # 元の例外を再発生させてトレーニングを停止
+                            raise
                     else:
                         # 予期しない致命的なエラー: ログに記録して再発生
                         logging.error(f"致命的な予期しないエラーが発生しました。トレーニングを停止します。")
