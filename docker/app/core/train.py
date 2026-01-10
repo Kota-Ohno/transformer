@@ -60,6 +60,8 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
                        help='データロードに使用するワーカー数')
     parser.add_argument('--no-nltk-download', action='store_true',
                        help='NLTKリソースのダウンロードをスキップする')
+    parser.add_argument('--seed', type=int, default=42,
+                       help='ランダムシード（再現性のため）')
     return parser.parse_args(args=argv)
 
 
@@ -157,7 +159,9 @@ def _load_and_prepare_data(
     if args.limit_samples > 0 and len(train_token_ids) > args.limit_samples:
         logging.info(f"トレーニングサンプル数を制限します: {len(train_token_ids)} → {args.limit_samples}")
         import random
-        random.shuffle(train_token_ids)
+        # 再現性のためシードを設定してからシャッフル
+        rng = random.Random(args.seed)
+        rng.shuffle(train_token_ids)
         train_token_ids = train_token_ids[:args.limit_samples]
 
     # ボキャブラリの読み込み
@@ -273,8 +277,9 @@ def _create_data_loaders(
     else:
         pad_token_id = 0  # デフォルト値（後方互換性のため）
 
-    # collate_fnをラップしてpad_token_idを渡す
-    collate_fn_with_pad = lambda batch: collate_fn(batch, pad_token_id=pad_token_id)
+    # collate_fnをラップしてpad_token_idを渡す（pickle可能にするためfunctools.partialを使用）
+    from functools import partial
+    collate_fn_with_pad = partial(collate_fn, pad_token_id=pad_token_id)
 
     # 高速モードの場合はデータローダーのオプションを最適化
     if args.fast:

@@ -214,7 +214,11 @@ def _chunked_predict(
     last_error = None
 
     for attempt in range(1, max_retries + 1):
-        overlap = max(chunk_size // 4, 8) if chunk_size > min_chunk_size else 0
+        if chunk_size <= min_chunk_size:
+            overlap = 0
+        else:
+            # overlapはchunk_size未満でなければならない（無限ループ防止）
+            overlap = min(max(chunk_size // 4, 8), chunk_size - 1)
         logging.info(
             f"チャンク推論を実行します: attempt={attempt}, chunk_size={chunk_size}, overlap={overlap}, seq_len={seq_len}"
         )

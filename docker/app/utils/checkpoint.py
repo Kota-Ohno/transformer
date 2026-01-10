@@ -35,22 +35,24 @@ def is_trusted_checkpoint_path(checkpoint_path: str) -> bool:
         信頼できるパスの場合はTrue、そうでない場合はFalse
     """
     try:
-        # 絶対パスに変換して正規化
-        abs_path = os.path.abspath(checkpoint_path)
-        abs_path_obj = Path(abs_path)
+        # シンボリックリンクを解決して正規化
+        resolved = Path(checkpoint_path).resolve()
 
-        # 信頼できるディレクトリのリスト
+        # ファイルの存在と通常ファイルであることを確認
+        if not resolved.exists() or not resolved.is_file():
+            return False
+
+        # 信頼できるディレクトリのリスト（シンボリックリンクを解決）
         trusted_dirs = [
-            os.path.abspath("models/checkpoints"),
-            os.path.abspath("models"),
+            Path("models/checkpoints").resolve(),
+            Path("models").resolve(),
         ]
 
         # チェックポイントファイルが信頼できるディレクトリ内にあるか確認
-        for trusted_dir in trusted_dirs:
-            trusted_dir_obj = Path(trusted_dir)
+        for trusted_dir_obj in trusted_dirs:
             try:
-                # 相対パスで判定（シンボリックリンク対策）
-                abs_path_obj.relative_to(trusted_dir_obj)
+                # 相対パスで判定（シンボリックリンク解決済み）
+                resolved.relative_to(trusted_dir_obj)
                 return True
             except ValueError:
                 # 相対パスでない場合は次のディレクトリをチェック

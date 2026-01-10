@@ -20,8 +20,8 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
             raise ValueError(f"d_model must be greater than 0, got {d_model}")
         if min_lr < 0:
             raise ValueError(f"min_lr must be non-negative, got {min_lr}")
-        if last_epoch < -1 or last_epoch >= total_steps:
-            raise ValueError(f"last_epoch must be in range [-1, {total_steps-1}], got {last_epoch}")
+        if last_epoch < -1:
+            raise ValueError(f"last_epoch must be >= -1, got {last_epoch}")
 
         self.d_model = d_model
         self.warmup_steps = warmup_steps

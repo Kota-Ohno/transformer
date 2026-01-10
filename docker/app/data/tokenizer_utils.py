@@ -161,6 +161,13 @@ def normalize_text(text, lang, normalize_numeric='<NUM>'):
     Raises:
         TypeError: textがNoneまたはstr型でない場合
     """
+    # langパラメータの検証
+    if lang not in ('en_US', 'ja_JP'):
+        raise ValueError(
+            f"langパラメータは'en_US'または'ja_JP'である必要があります。"
+            f"現在の値: {lang}"
+        )
+
     # textの検証
     if text is None:
         raise TypeError(

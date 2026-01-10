@@ -164,11 +164,11 @@ def main():
             # すべてのヘルプを表示
             for func in TOPIC_FUNCTIONS.values():
                 func()
-            input("Press Enter to continue...")
+            input("続行するにはEnterキーを押してください...")
         elif topic in TOPIC_FUNCTIONS:
             # マッピングされた関数を呼び出し
             TOPIC_FUNCTIONS[topic]()
-            input("Press Enter to continue...")
+            input("続行するにはEnterキーを押してください...")
         else:
             print("無効な選択です。もう一度試してください。")
             time.sleep(1)

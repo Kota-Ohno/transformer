@@ -264,7 +264,8 @@ class Trainer:
                 self.last_bleu = checkpoint_data.get('last_bleu', None)
                 logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、最良検証損失 {self.best_valid_loss:.4f}")
             except Exception as e:
-                logging.error(f"チェックポイントからの復元に失敗しました: {e}")
+                logging.exception(f"チェックポイントからの復元に失敗しました: {e}")
+                raise
 
         return start_epoch
 

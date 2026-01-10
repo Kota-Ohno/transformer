@@ -3,7 +3,6 @@
 """
 import logging
 import sys
-import copy
 from typing import Optional
 
 # coloramaのインポートを試行（オプショナル）

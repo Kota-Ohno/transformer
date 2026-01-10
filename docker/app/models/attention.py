@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 import math
-from utils.config import CONFIG
-import logging
 
 # キャッシュサイズの最大値
 MAX_CACHE_ENTRIES = 100
@@ -91,11 +89,14 @@ class MultiHeadAttention(nn.Module):
                       キャッシュは線形変換（self.wv）とヘッド分割（split_heads）が既に適用された状態で提供される必要があります。
             return_cache: キャッシュを返すかどうか
         Returns:
-            output: アテンション出力 [batch_size, seq_len_q, d_model]
-            キャッシュ情報（return_cache=Trueの場合）: (attention_weights, k, v)
-                - attention_weights: [batch_size, num_heads, seq_len_q, seq_len_k]
-                - k: [batch_size, num_heads, seq_len_k, d_k]
-                - v: [batch_size, num_heads, seq_len_v, d_k]
+            return_cache=Falseの場合:
+                output: アテンション出力 [batch_size, seq_len_q, d_model]
+            return_cache=Trueの場合:
+                (output, attention_weights, k, v) の4タプル:
+                - output: アテンション出力 [batch_size, seq_len_q, d_model]
+                - attention_weights: アテンションの重み [batch_size, num_heads, seq_len_q, seq_len_k]
+                - k: キャッシュされたキー [batch_size, num_heads, seq_len_k, d_k]
+                - v: キャッシュされた値 [batch_size, num_heads, seq_len_v, d_k]
         """
         batch_size = q.size(0)
 
@@ -108,7 +109,6 @@ class MultiHeadAttention(nn.Module):
         else:
             # キャッシュの形状を検証
             # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
-            expected_shape = (batch_size, self.num_heads, -1, self.d_k)
             if cached_k.dim() != 4:
                 raise ValueError(f"cached_k must be 4-dimensional, got {cached_k.dim()} dimensions")
             if cached_k.size(0) != batch_size:
@@ -124,7 +124,6 @@ class MultiHeadAttention(nn.Module):
         else:
             # キャッシュの形状を検証
             # キャッシュは線形変換とヘッド分割が既に適用された状態である必要がある
-            expected_shape = (batch_size, self.num_heads, -1, self.d_k)
             if cached_v.dim() != 4:
                 raise ValueError(f"cached_v must be 4-dimensional, got {cached_v.dim()} dimensions")
             if cached_v.size(0) != batch_size:

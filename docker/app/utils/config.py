@@ -14,14 +14,14 @@ class ModelConfig:
 
     注意: このクラスは直接インスタンス化せず、from_gpu_memory()クラスメソッドを使用してください。
     """
-    def __init__(self, hidden_size: int, num_heads: int, num_layers: int, d_ff: int, dropout: float, max_seq_length: int, rel_pos_max_distance: int):
+    def __init__(self, hidden_size: int, num_heads: int, num_layers: int, d_ff: int, dropout_rate: float, max_seq_length: int, rel_pos_max_distance: int):
         """
         Args:
             hidden_size: 隠れ層の次元数
             num_heads: アテンションヘッド数
             num_layers: エンコーダー/デコーダーのレイヤー数
             d_ff: フィードフォワード層の次元数
-            dropout: ドロップアウト率
+            dropout_rate: ドロップアウト率
             max_seq_length: 最大シーケンス長
             rel_pos_max_distance: 相対位置エンコーディングの最大距離
         """
@@ -29,7 +29,7 @@ class ModelConfig:
         self.num_heads = num_heads
         self.num_layers = num_layers
         self.d_ff = d_ff
-        self.dropout = dropout
+        self.dropout_rate = dropout_rate
         self.max_seq_length = max_seq_length
         self.rel_pos_max_distance = rel_pos_max_distance
 
@@ -50,27 +50,27 @@ class ModelConfig:
         """
         if not torch.cuda.is_available():
             # GPUがない場合はデフォルト設定
-            return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
         try:
             total_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3) # GB
         except (RuntimeError, AssertionError) as e:
             # GPU プロパティへのアクセスに失敗した場合はデフォルト設定にフォールバック
             print(f"Warning: Failed to access GPU properties: {e}. Using default configuration.")
-            return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            return cls(hidden_size=512, num_heads=8, num_layers=6, d_ff=2048, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
         if total_memory >= 16:
             # 16GB以上: より大きなモデル (hidden=768, heads=12, layers=10)
-            return cls(hidden_size=768, num_heads=12, num_layers=10, d_ff=3072, dropout=0.1, max_seq_length=1024, rel_pos_max_distance=256)
+            return cls(hidden_size=768, num_heads=12, num_layers=10, d_ff=3072, dropout_rate=0.1, max_seq_length=1024, rel_pos_max_distance=256)
         elif total_memory >= 8:
             # 8GB以上16GB未満: 4レイヤー (hidden=512, heads=8)
-            return cls(hidden_size=512, num_heads=8, num_layers=4, d_ff=2048, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            return cls(hidden_size=512, num_heads=8, num_layers=4, d_ff=2048, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
         elif total_memory >= 4:
             # 4GB以上8GB未満: 4レイヤー (hidden=384, heads=6)
-            return cls(hidden_size=384, num_heads=6, num_layers=4, d_ff=1536, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            return cls(hidden_size=384, num_heads=6, num_layers=4, d_ff=1536, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
         else:
             # 4GB未満: 3レイヤー (hidden=256, heads=4)
-            return cls(hidden_size=256, num_heads=4, num_layers=3, d_ff=1024, dropout=0.1, max_seq_length=512, rel_pos_max_distance=128)
+            return cls(hidden_size=256, num_heads=4, num_layers=3, d_ff=1024, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
 @dataclass
 class ModelHyperparameters:
@@ -149,7 +149,7 @@ class GlobalConfig:
         self.model_hyperparameters.num_heads = adjusted_model_config.num_heads
         self.model_hyperparameters.num_layers = adjusted_model_config.num_layers
         self.model_hyperparameters.d_ff = adjusted_model_config.d_ff
-        self.model_hyperparameters.dropout_rate = adjusted_model_config.dropout
+        self.model_hyperparameters.dropout_rate = adjusted_model_config.dropout_rate
         self.model_hyperparameters.max_seq_length = adjusted_model_config.max_seq_length
         self.model_hyperparameters.rel_pos_max_distance = adjusted_model_config.rel_pos_max_distance
 

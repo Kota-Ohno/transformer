@@ -236,6 +236,11 @@ class DataAugmentor:
         if rng is None:
             rng = random
 
+        # window_sizeの早期検証
+        if not isinstance(window_size, int) or window_size <= 0:
+            logging.warning(f"window_sizeは正の整数である必要があります。現在の値: {window_size}。元のデータを返します。")
+            return token_ids if isinstance(token_ids, list) else []
+
         if not token_ids or not isinstance(token_ids, list):
             return token_ids if isinstance(token_ids, list) else []
 
@@ -453,9 +458,13 @@ class DataAugmentor:
         if rng is None:
             rng = random
 
+        # token_idsの早期検証と簡素化
         if not isinstance(token_ids, list):
-            logging.warning(f"token_idsがリストではありません: {type(token_ids)}。元のデータを返します。")
-            return [] if token_ids is None else [token_ids] if not isinstance(token_ids, list) else token_ids
+            logging.warning(f"token_idsがリストではありません: {type(token_ids)}。空のリストを返します。")
+            return []
+
+        if not token_ids:
+            return []
 
         if techniques is None:
             techniques = ["masking", "deletion", "replacement", "permutation"]
@@ -523,9 +532,10 @@ class DataAugmentor:
                 # 親RNGからシードを生成（再現性を保つため）
                 seed = parent_rng.randint(0, 2**31 - 1)
             else:
-                # ローカルのRandomインスタンスを作成してシードを生成（グローバルrandomを避ける）
-                local_rng = random.Random()
-                seed = local_rng.randint(0, 2**31 - 1)
+                # 決定論的なシードを生成（timeベース）
+                import time
+                seed = int(time.time() * 1e6) % (2**31)
+                logging.warning(f"seedとparent_rngが両方Noneのため、時間ベースのシード({seed})を使用します。再現性が保証されません。")
         # 同じシードで2つの独立したRNGを作成して、srcとtgtが同じ決定論的な拡張を受け取るようにする
         src_rng = random.Random(seed)
         tgt_rng = random.Random(seed)
@@ -540,7 +550,8 @@ class DataAugmentor:
 def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
                    sp_src, sp_tgt,
                    augmentation_factor: float = 0.3,
-                   techniques: List[str] = None) -> List[Tuple[List[int], List[int]]]:
+                   techniques: List[str] = None,
+                   seed: int = None) -> List[Tuple[List[int], List[int]]]:
     """
     トレーニングデータセットを拡張する関数
 
@@ -550,12 +561,16 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
         sp_tgt: ターゲット言語のSentencePieceモデル
         augmentation_factor: 元のデータセットに対する拡張データの割合
         techniques: 適用する拡張手法のリスト
+        seed: ランダムシード（再現性のため、Noneの場合は非決定論的）
 
     Returns:
         拡張されたトレーニングデータ
     """
     if techniques is None:
         techniques = ["masking", "deletion", "replacement", "permutation"]
+
+    # 決定論的なRNGを作成
+    rng = random.Random(seed) if seed is not None else random
 
     # 拡張するサンプル数を計算
     num_samples = len(train_data)
@@ -573,7 +588,7 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
     augmented_data = []
 
     # サンプルをランダムに選択して拡張
-    indices = random.sample(range(num_samples), num_augmented)
+    indices = rng.sample(range(num_samples), num_augmented)
 
     for idx in tqdm(indices, desc="データ拡張中"):
         try:
@@ -594,9 +609,9 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
 
             # ソースとターゲットのペアに対して同期された拡張を適用
             # ペアごとに決定論的なシードを生成して、srcとtgtで同じランダム状態を使用
-            pair_seed = random.randint(0, 2**31 - 1)
+            pair_seed = rng.randint(0, 2**31 - 1)
             aug_src_tokens, aug_tgt_tokens = augmentor.apply_pair_augmentations(
-                src_tokens, tgt_tokens, techniques, seed=pair_seed
+                src_tokens, tgt_tokens, techniques, seed=pair_seed, parent_rng=rng
             )
 
             # 拡張データを追加
