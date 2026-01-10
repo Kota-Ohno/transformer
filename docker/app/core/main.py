@@ -150,12 +150,12 @@ def show_config_summary():
         if learning_rate is None:
             missing_attrs.append('CONFIG.training_config.learning_rate')
 
-        # 欠けている属性がある場合はエラーログを出力して早期リターン
+        # 欠けている属性がある場合はエラーログを出力してプロセスを停止
         if missing_attrs:
             logging.error(f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}")
             print(f"\n{Colors.ERROR}警告: 設定情報の一部が取得できませんでした。{Colors.RESET}")
             print(f"{Colors.ERROR}欠けている属性: {', '.join(missing_attrs)}{Colors.RESET}\n")
-            return
+            raise RuntimeError(f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}")
 
         # 設定の概要を表示
         print("\n" + "="*50)
@@ -211,6 +211,9 @@ def main():
         os.environ['TRANSFORMER_LIMIT_SAMPLES'] = str(args.limit_samples)
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
 
+    # 環境変数設定後にCONFIGを再読み込み
+    CONFIG.reload_from_env()
+
     # ロギングの設定
     setup_logging()
 
@@ -224,7 +227,8 @@ def main():
     logging.info("トレーニングを開始します...")
 
     # 他の引数を付けてトレーニングメイン関数を呼び出す
-    train_main(unknown_args)
+    # unknown_argsが空の場合はNoneを渡す（train_mainはOptional[List[str]]を受け取る）
+    train_main(unknown_args if unknown_args else None)
 
 if __name__ == "__main__":
     try:

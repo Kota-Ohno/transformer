@@ -2,7 +2,7 @@ import os
 import logging
 import sentencepiece as spm
 import re
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Optional
 from data.data import train_sentencepiece
 
 # モジュールスコープのロガーを作成
@@ -71,7 +71,10 @@ def _validate_and_filter_texts(
 
 
 def train_and_load_sp_models(
-    train_texts_src: Union[str, List[str]], train_texts_tgt: Union[str, List[str]]
+    train_texts_src: Union[str, List[str]],
+    train_texts_tgt: Union[str, List[str]],
+    save_path_src: Optional[str] = None,
+    save_path_tgt: Optional[str] = None,
 ) -> Tuple[spm.SentencePieceProcessor, spm.SentencePieceProcessor]:
     """
     ソースとターゲットのSentencePieceモデルをトレーニングして読み込みます。
@@ -79,6 +82,8 @@ def train_and_load_sp_models(
     Args:
         train_texts_src: ソース言語のトレーニングテキスト（文字列またはリスト）
         train_texts_tgt: ターゲット言語のトレーニングテキスト（文字列またはリスト）
+        save_path_src: ソースモデルの保存パス（.model拡張子なし）。Noneの場合はデフォルトパスを使用。
+        save_path_tgt: ターゲットモデルの保存パス（.model拡張子なし）。Noneの場合はデフォルトパスを使用。
 
     Returns:
         tuple: (ソースモデル, ターゲットモデル)
@@ -90,9 +95,18 @@ def train_and_load_sp_models(
     train_texts_src = _validate_and_filter_texts(train_texts_src, "train_texts_src")
     train_texts_tgt = _validate_and_filter_texts(train_texts_tgt, "train_texts_tgt")
 
-    # モデルパス
-    src_model_prefix = os.path.join("models", "sp_src")
-    tgt_model_prefix = os.path.join("models", "sp_tgt")
+    # モデルパス（保存パスが指定されている場合はそれを使用、そうでない場合はデフォルト）
+    if save_path_src:
+        # .model拡張子を削除（train_sentencepieceが追加するため）
+        src_model_prefix = save_path_src.rstrip(".model")
+    else:
+        src_model_prefix = os.path.join("models", "sp_src")
+
+    if save_path_tgt:
+        # .model拡張子を削除（train_sentencepieceが追加するため）
+        tgt_model_prefix = save_path_tgt.rstrip(".model")
+    else:
+        tgt_model_prefix = os.path.join("models", "sp_tgt")
 
     # models ディレクトリがない場合は作成
     os.makedirs("models", exist_ok=True)

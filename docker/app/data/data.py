@@ -8,6 +8,7 @@ import re
 import logging
 import traceback
 import threading
+import functools
 from typing import List, Tuple, Optional, Callable, Any, Dict
 
 # データセットクラス
@@ -140,7 +141,7 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
         raise RuntimeError(f"Failed to process batch in collate_fn: {e}") from e
 
 # データローダーを作成
-def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Optional[int] = None) -> DataLoader:
+def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Optional[int] = None, shuffle: bool = True) -> DataLoader:
     """
     データセットまたはトークンIDのリストからデータローダーを作成
 
@@ -148,6 +149,7 @@ def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Opti
         dataset_or_data: データセットインスタンスまたはトークンIDのリスト
         batch_size: バッチサイズ
         pad_token_id: パディングに使用するトークンID（Noneの場合はデフォルトの0を使用）
+        shuffle: データをシャッフルするかどうか（デフォルト: True）
 
     Returns:
         DataLoader: バッチ処理を行うデータローダー
@@ -161,14 +163,14 @@ def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Opti
         # すでにデータセットインスタンスの場合はそのまま使用
         dataset = dataset_or_data
 
-    # pad_token_idが指定されている場合はlambdaでラップして渡す
+    # pad_token_idが指定されている場合はfunctools.partialでラップして渡す（pickle-safe）
     if pad_token_id is not None:
-        collate_fn_with_pad = lambda batch: collate_fn(batch, pad_token_id=pad_token_id)
+        collate_fn_with_pad = functools.partial(collate_fn, pad_token_id=pad_token_id)
     else:
         collate_fn_with_pad = collate_fn
 
     # データローダー作成
-    return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_with_pad)
+    return DataLoader(dataset=dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn_with_pad)
 
 # spacyのモデルを遅延ロード（グローバルロードを削除）
 _nlp_ja = None

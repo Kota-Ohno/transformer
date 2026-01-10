@@ -58,7 +58,7 @@ def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_
         model_files = [f for f in model_files if not f.endswith(('vocab_input.pth', 'vocab_output.pth'))]
         if not model_files:
             raise FileNotFoundError("学習済みモデルファイルが見つかりません。'models/' ディレクトリを確認してください。")
-        model_path = max(model_files, key=os.path.getctime)  # 最新のファイルを選択
+        model_path = max(model_files, key=os.path.getmtime)  # 最新のファイルを選択
         logging.info(f"最新のモデルを使用します: {model_path}")
 
     # モデルの読み込み

@@ -170,6 +170,27 @@ class GlobalConfig:
         # デバイスの検証とフォールバック処理
         self._validate_and_fallback_device()
 
+    def reload_from_env(self):
+        """
+        環境変数から設定を再読み込みします。
+
+        このメソッドは、環境変数が動的に変更された後に呼び出すことで、
+        設定を最新の環境変数の値に更新できます。
+        """
+        # 環境変数からのオーバーライド（最高優先度、ネストされたフィールドも正しくオーバーライド）
+        self._override_from_env(self.model_hyperparameters, "TRANSFORMER_MODEL_")
+        self._override_from_env(self.training_config, "TRANSFORMER_TRAINING_")
+        self._override_from_env(self.data_config, "TRANSFORMER_DATA_")
+        self._override_from_env(self, "TRANSFORMER_GLOBAL_")
+
+        # TRANSFORMER_DEVICE環境変数もサポート（後方互換性のため）
+        device_env = os.getenv("TRANSFORMER_DEVICE")
+        if device_env is not None:
+            self.device = device_env.lower()
+
+        # デバイスの検証とフォールバック処理
+        self._validate_and_fallback_device()
+
     def _get_expected_type(self, obj: Any, key: str):
         """
         属性の期待される型を取得します。
@@ -205,23 +226,30 @@ class GlobalConfig:
             section: セクション名（ログ用）
 
         Returns:
-            (変換された値, 成功フラグ)のタプル
-        """
-        # Noneの場合はスキップ
-        if value is None:
-            return None, False
-
-        # 型アノテーションが複雑な型（List, Dict等）の場合を先にチェック
-        origin = get_origin(expected_type)
-        if origin is None:
-            # ジェネリクスでない場合のみ、isinstanceチェックを実行
-            try:
-                if isinstance(value, expected_type):
+                # List型の場合
+                if isinstance(value, list):
+                    # 要素の型を取得
+                    args = get_args(expected_type)
+                    if args:
+                        element_type = args[0]
+                        try:
+                            coerced_list = []
+                            for item in value:
+                                coerced_item, success = self._coerce_value(item, element_type, key, section)
+                                if not success:
+                                    logging.warning(
+                                        f"Failed to coerce list element in {section}.{key}. Skipping entire list."
+                                    )
+                                    return None, False
+                                coerced_list.append(coerced_item)
+                            return coerced_list, True
+                        except (ValueError, TypeError):
+                            logging.warning(
+                                f"Type mismatch in config.json: {section}.{key} expects List[{element_type.__name__}], "
+                                f"but got {type(value).__name__}. Skipping assignment."
+                            )
+                            return None, False
                     return value, True
-            except TypeError:
-                # isinstanceがジェネリクス型に対してTypeErrorを発生させた場合
-                # 後続の処理に進む（このケースは通常発生しないが、念のため）
-                pass
 
         # 型アノテーションが複雑な型（List, Dict等）の場合
         if origin is not None:

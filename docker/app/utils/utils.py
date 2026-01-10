@@ -11,7 +11,7 @@ def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> No
     """必要なnltkリソースをダウンロードします。環境変数でスキップ可能。
 
     Args:
-        critical_resources: 重要なリソースのセット。これらのダウンロードに失敗した場合は
+        critical_resources: ダウンロードするリソースのセット。これらのダウンロードに失敗した場合は
             例外を再発生させます。デフォルトは{'punkt'}。
 
     Raises:
@@ -40,11 +40,8 @@ def download_nltk_resources(critical_resources: Optional[Set[str]] = None) -> No
         # nltk.data.pathの先頭にカスタムディレクトリを追加
         nltk.data.path.insert(0, nltk_data_dir)
 
-        # 必須のリソース
-        resources = ['punkt']
-
         # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
-        for resource in resources:
+        for resource in critical_resources:
             try:
                 logging.info(f"nltk resource {resource} をダウンロードしています...")
                 nltk.download(resource, download_dir=nltk_data_dir, quiet=True)

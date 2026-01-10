@@ -114,6 +114,23 @@ class Trainer:
             self.args.no_wandb = True
             self.wandb_available = False
 
+    def _get_current_lr(self) -> float:
+        """現在の学習率を安全に取得するヘルパーメソッド。
+
+        Returns:
+            現在の学習率（float）。schedulerが存在しないか、get_lr()が空のリストを返す場合は0.0。
+        """
+        if not self.scheduler or not hasattr(self.scheduler, 'get_lr'):
+            return 0.0
+
+        try:
+            lr_list = self.scheduler.get_lr()
+            if lr_list:
+                return float(lr_list[0])
+            return 0.0
+        except (IndexError, TypeError, AttributeError):
+            return 0.0
+
     def _log_metrics(self, epoch, train_loss, val_loss, bleu_score):
         if not self.args.no_wandb and self.wandb_available:
             try:
@@ -123,7 +140,7 @@ class Trainer:
                     "train_loss": train_loss,
                     "val_loss": val_loss,
                     "bleu_score": bleu_score,
-                    "learning_rate": self.scheduler.get_lr()[0] if self.scheduler and hasattr(self.scheduler, 'get_lr') else 0
+                    "learning_rate": self._get_current_lr()
                 }
                 wandb.log(metrics)
             except (ImportError, AttributeError):
@@ -212,7 +229,7 @@ class Trainer:
 
             epoch_loss += loss.item() * accumulation_steps
 
-            current_lr = self.scheduler.get_lr()[0] if self.scheduler and hasattr(self.scheduler, 'get_lr') else 0.0
+            current_lr = self._get_current_lr()
             pbar.set_postfix({
                 "loss": f"{loss.item() * accumulation_steps:.4f}",
                 "lr": f"{current_lr:.6f}"

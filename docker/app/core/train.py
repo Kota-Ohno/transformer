@@ -86,7 +86,8 @@ def _check_and_setup_gpu(args: argparse.Namespace) -> torch.device:
             else:
                 gpu_props = torch.cuda.get_device_properties(0)
                 # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
-                if gpu_props.total_memory < VRAM_THRESHOLD_8GB * BYTES_PER_MB:
+                vram_threshold_8gb_bytes = VRAM_THRESHOLD_8GB * BYTES_PER_MB  # VRAM_THRESHOLD_8GB is in MB
+                if gpu_props.total_memory < vram_threshold_8gb_bytes:
                     logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
                     args.fast = True
         except (RuntimeError, AssertionError) as e:
@@ -243,10 +244,12 @@ def _create_data_loaders(
     if device.type == 'cuda':
         try:
             if torch.cuda.is_available():
-                vram_mb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_MB
-                if vram_mb < VRAM_THRESHOLD_4GB:
+                vram_gb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_GB
+                vram_threshold_4gb_gb = VRAM_THRESHOLD_4GB / 1024  # MB to GB conversion
+                vram_threshold_8gb_gb = VRAM_THRESHOLD_8GB / 1024  # MB to GB conversion
+                if vram_gb < vram_threshold_4gb_gb:
                     adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_SMALL_VRAM)
-                elif vram_mb < VRAM_THRESHOLD_8GB:
+                elif vram_gb < vram_threshold_8gb_gb:
                     adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_MEDIUM_VRAM)
             else:
                 logging.warning("CUDAが利用できないため、CPUモードで続行します。")
