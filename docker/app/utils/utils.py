@@ -136,7 +136,8 @@ def create_tgt_mask(tgt: torch.Tensor, tgt_pad_idx: int) -> torch.Tensor:
 
     # 両方のマスクを結合（パディングマスクの形状を調整）
     # tgt_pad_mask: [batch_size, 1, 1, tgt_len] -> [batch_size, 1, tgt_len, tgt_len]
-    tgt_pad_mask_expanded = tgt_pad_mask.squeeze(2).expand(-1, -1, tgt_len, -1)
+    # dim=2 を tgt_len に拡張
+    tgt_pad_mask_expanded = tgt_pad_mask.expand(-1, -1, tgt_len, -1)
     tgt_mask = tgt_pad_mask_expanded * tgt_sub_mask.unsqueeze(0).unsqueeze(0)
 
     return tgt_mask

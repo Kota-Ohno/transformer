@@ -43,11 +43,9 @@ class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
                 lrs.append(lr_i)
             return lrs
         else:
-            if self.total_steps > self.warmup_steps:
-                progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
-                progress = min(max(progress, 0.0), 1.0)
-            else:
-                progress = 1.0
+            # warmup_steps < total_steps は既に検証済みなので、常にこの計算を実行
+            progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
+            progress = min(max(progress, 0.0), 1.0)
             # コサイン減衰を適用（各パラメータグループごとに計算）
             lrs = []
             for base_lr in self.base_lrs:

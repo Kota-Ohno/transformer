@@ -30,7 +30,7 @@ class ColoredFormatter(logging.Formatter):
         # coloramaが利用可能な場合に色を設定
         if COLORAMA_AVAILABLE and colorama:
             self.LEVEL_COLORS = {
-                logging.DEBUG: colorama.Fore.CYAN,
+                logging.DEBUG: colorama.Fore.BLUE,
                 logging.INFO: colorama.Fore.CYAN,
                 logging.WARNING: colorama.Fore.YELLOW,
                 logging.ERROR: colorama.Fore.RED,

@@ -258,12 +258,15 @@ class Trainer:
                 logging.info(f"チェックポイント {checkpoint_path} からモデルを復元しています...")
                 checkpoint_data = load_checkpoint(checkpoint_path, self.model, self.optimizer, self.scheduler)
                 start_epoch = checkpoint_data.get('epoch', 0) + 1
-                self.best_valid_loss = checkpoint_data.get('best_valid_loss', float('inf'))
-                self.best_bleu = checkpoint_data.get('best_bleu', 0.0)
+                # 後方互換性のため、古いキー名もサポート
+                val_loss = checkpoint_data.get('val_loss', checkpoint_data.get('best_valid_loss', checkpoint_data.get('last_valid_loss', float('inf'))))
+                bleu_score = checkpoint_data.get('bleu_score', checkpoint_data.get('best_bleu', checkpoint_data.get('last_bleu', 0.0)))
+                self.best_valid_loss = val_loss
+                self.best_bleu = bleu_score
                 # 最新の検証済みメトリクスも復元（KeyboardInterrupt時のチェックポイント保存用）
-                self.last_valid_loss = checkpoint_data.get('last_valid_loss', None)
-                self.last_bleu = checkpoint_data.get('last_bleu', None)
-                logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、最良検証損失 {self.best_valid_loss:.4f}")
+                self.last_valid_loss = val_loss
+                self.last_bleu = bleu_score
+                logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、検証損失 {val_loss:.4f}")
             except Exception as e:
                 logging.exception(f"チェックポイントからの復元に失敗しました: {e}")
                 raise

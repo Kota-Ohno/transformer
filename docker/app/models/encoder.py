@@ -1,3 +1,4 @@
+import math
 import torch
 import torch.nn as nn
 from .attention import MultiHeadAttention
@@ -87,7 +88,7 @@ class Encoder(nn.Module):
         validate_token_ids(x, vocab_size, tensor_name="encoder input")
 
         # 埋め込みと位置エンコーディング
-        x = self.embedding(x)
+        x = self.embedding(x) * math.sqrt(self.d_model)
         x = self.pos_encoding(x)
         x = self.dropout(x)
 

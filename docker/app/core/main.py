@@ -236,9 +236,11 @@ def main() -> int:
 
 if __name__ == "__main__":
     try:
-        main()
+        rc = main()
+        sys.exit(rc)
     except KeyboardInterrupt:
         logging.info("ユーザーによって中断されました")
+        sys.exit(130)  # SIGINT の標準的な終了コード
     except Exception as e:
         logging.error(f"エラーが発生しました: {e}")
         import traceback

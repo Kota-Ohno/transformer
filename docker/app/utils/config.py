@@ -281,8 +281,12 @@ class GlobalConfig:
                                 coerced_list.append(coerced_item)
                             return coerced_list, True
                         except (ValueError, TypeError) as e:
+                            # element_type_name は既に安全に取得済み
+                            element_type_name_safe = getattr(element_type, "__name__", None)
+                            if element_type_name_safe is None:
+                                element_type_name_safe = str(element_type) or repr(element_type)
                             logging.warning(
-                                f"Type mismatch in _coerce_value: {section}.{key} expects List[{element_type.__name__}], "
+                                f"Type mismatch in _coerce_value: {section}.{key} expects List[{element_type_name_safe}], "
                                 f"but got {type(value).__name__}. Error: {e}. Skipping assignment."
                             )
                             return None, False
@@ -348,11 +352,21 @@ class GlobalConfig:
                 if isinstance(value, expected_type):
                     return value, True
                 else:
-                    raise ValueError(f"Cannot convert {type(value).__name__} to {expected_type.__name__}")
+                    # expected_type の名前を安全に取得
+                    expected_type_name = getattr(expected_type, "__name__", None)
+                    if expected_type_name is None:
+                        # typing の Union などの場合は str() を使用
+                        expected_type_name = str(expected_type)
+                    raise ValueError(f"Cannot convert {type(value).__name__} to {expected_type_name}")
 
         except (ValueError, TypeError) as e:
+            # expected_type の名前を安全に取得
+            expected_type_name = getattr(expected_type, "__name__", None)
+            if expected_type_name is None:
+                # typing の Union などの場合は str() を使用
+                expected_type_name = str(expected_type)
             logging.warning(
-                f"Type mismatch in config.json: {section}.{key} expects {expected_type.__name__}, "
+                f"Type mismatch in config.json: {section}.{key} expects {expected_type_name}, "
                 f"but got {type(value).__name__} (value: {value}). Error: {e}. Skipping assignment."
             )
             return None, False

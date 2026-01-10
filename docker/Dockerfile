@@ -27,12 +27,8 @@ RUN groupadd -r transformer && \
 
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
-# デバイス設定（デフォルトはcuda、実行時に上書き可能）
+# デバイス設定は entrypoint.sh で CUDA 可用性を検出して自動設定されます
 # ランタイムでオーバーライドする場合: docker run -e TRANSFORMER_GLOBAL_DEVICE=cpu
-ENV TRANSFORMER_GLOBAL_DEVICE cuda
-# 後方互換性のため、TRANSFORMER_DEVICEも設定
-# ランタイムでオーバーライドする場合: docker run -e TRANSFORMER_DEVICE=cpu
-ENV TRANSFORMER_DEVICE cuda
 
 # 非rootユーザーに切り替え
 USER transformer

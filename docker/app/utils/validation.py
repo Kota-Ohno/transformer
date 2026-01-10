@@ -33,6 +33,12 @@ def validate_token_ids(
     # 範囲チェック（GPU-CPU同期を避けるため、デバッグモードでのみ詳細チェック）
     if CONFIG.training_config.debug_mode:
         # デバッグモード: 詳細な範囲チェック（GPU-CPU同期あり）
+        # 空テンソルのチェック
+        if x.numel() == 0:
+            raise ValueError(
+                f"Input tensor {tensor_name} is empty. "
+                f"Input shape: {x.shape}, vocab_size: {vocab_size}"
+            )
         x_min = x.min().item()
         x_max = x.max().item()
         valid_min = 0
@@ -51,6 +57,12 @@ def validate_token_ids(
         is_valid = torch.all((x >= 0) & (x < vocab_size))
         if not is_valid.item():
             # エラー時のみ詳細情報を取得
+            # 空テンソルのチェック（エラー時のみ）
+            if x.numel() == 0:
+                raise ValueError(
+                    f"Input tensor {tensor_name} is empty. "
+                    f"Input shape: {x.shape}, vocab_size: {vocab_size}"
+                )
             # 注意: 以下のtensor.item()/cpu()呼び出しは、エラーブランチが実行された場合のみ追加のGPU→CPU同期を発生させる
             x_min = x.min().item()
             x_max = x.max().item()
