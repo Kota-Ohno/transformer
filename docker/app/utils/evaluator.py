@@ -7,7 +7,6 @@ import time
 import traceback
 import sacrebleu
 from typing import Optional, Dict, List, Tuple, Any, Union
-from nltk.translate.bleu_score import SmoothingFunction
 from utils.config import CONFIG
 from utils.constants import (
     LOG_INTERVAL_BATCHES, DEFAULT_MAX_SAMPLES_PER_BATCH,

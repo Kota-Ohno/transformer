@@ -201,28 +201,35 @@ _nlp_ja = None
 _nlp_en = None
 _nlp_ja_lock = threading.Lock()
 _nlp_en_lock = threading.Lock()
+_nlp_ja_load_failed = False
+_nlp_en_load_failed = False
 
 def get_nlp_ja() -> Optional[Any]:
     """
     日本語spacyモデルを遅延ロードするアクセサ関数（スレッドセーフ）
     モデルが存在しない場合はNoneを返し、エラーをログに記録
     """
-    global _nlp_ja
+    global _nlp_ja, _nlp_ja_load_failed
+    # 以前のロード失敗をチェック（リトライを防ぐ）
+    if _nlp_ja_load_failed:
+        return None
     # ダブルチェックロッキングパターンを使用
     if _nlp_ja is None:
         with _nlp_ja_lock:
             # ロック取得後に再度チェック（他のスレッドが既にロードした可能性があるため）
-            if _nlp_ja is None:
+            if _nlp_ja is None and not _nlp_ja_load_failed:
                 try:
                     _nlp_ja = spacy.load("ja_core_news_md")
                     logging.info("Successfully loaded Japanese spacy model: ja_core_news_md")
                 except OSError as e:
                     logging.error(f"Failed to load Japanese spacy model 'ja_core_news_md': {e}")
                     logging.error("Please install the model with: python -m spacy download ja_core_news_md")
+                    _nlp_ja_load_failed = True
                     _nlp_ja = None
                 except Exception as e:
                     logging.error(f"Unexpected error loading Japanese spacy model: {e}")
                     logging.error(f"Traceback:\n{traceback.format_exc()}")
+                    _nlp_ja_load_failed = True
                     _nlp_ja = None
     return _nlp_ja
 
@@ -231,22 +238,27 @@ def get_nlp_en() -> Optional[Any]:
     英語spacyモデルを遅延ロードするアクセサ関数（スレッドセーフ）
     モデルが存在しない場合はNoneを返し、エラーをログに記録
     """
-    global _nlp_en
+    global _nlp_en, _nlp_en_load_failed
+    # 以前のロード失敗をチェック（リトライを防ぐ）
+    if _nlp_en_load_failed:
+        return None
     # ダブルチェックロッキングパターンを使用
     if _nlp_en is None:
         with _nlp_en_lock:
             # ロック取得後に再度チェック（他のスレッドが既にロードした可能性があるため）
-            if _nlp_en is None:
+            if _nlp_en is None and not _nlp_en_load_failed:
                 try:
                     _nlp_en = spacy.load("en_core_web_md")
                     logging.info("Successfully loaded English spacy model: en_core_web_md")
                 except OSError as e:
                     logging.error(f"Failed to load English spacy model 'en_core_web_md': {e}")
                     logging.error("Please install the model with: python -m spacy download en_core_web_md")
+                    _nlp_en_load_failed = True
                     _nlp_en = None
                 except Exception as e:
                     logging.error(f"Unexpected error loading English spacy model: {e}")
                     logging.error(f"Traceback:\n{traceback.format_exc()}")
+                    _nlp_en_load_failed = True
                     _nlp_en = None
     return _nlp_en
 

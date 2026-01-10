@@ -87,8 +87,8 @@ class TextTokenizer:
 
         # save_path_src/save_path_tgtが指定されているが、訓練時に直接保存されなかった場合のフォールバック
         # （train_and_load_sp_modelsがデフォルトパスに保存した場合、指定されたパスにコピー）
+        tokenizer = cls(sp_src=sp_src, sp_tgt=sp_tgt)
         if save_path_src or save_path_tgt:
-            tokenizer = cls(sp_src=sp_src, sp_tgt=sp_tgt)
             # 訓練時に指定されたパスに保存されなかった場合（デフォルトパスに保存された場合）のみコピー
             if save_path_src:
                 # 指定されたパスにファイルが存在しない場合のみコピー
@@ -97,6 +97,7 @@ class TextTokenizer:
                 )
                 if not os.path.exists(save_path_src_with_ext):
                     tokenizer.save_model(save_path_src, is_source=True)
+                    tokenizer.sp_src_path = save_path_src_with_ext
             if save_path_tgt:
                 # 指定されたパスにファイルが存在しない場合のみコピー
                 save_path_tgt_with_ext = (
@@ -104,8 +105,9 @@ class TextTokenizer:
                 )
                 if not os.path.exists(save_path_tgt_with_ext):
                     tokenizer.save_model(save_path_tgt, is_source=False)
+                    tokenizer.sp_tgt_path = save_path_tgt_with_ext
 
-        return cls(sp_src=sp_src, sp_tgt=sp_tgt)
+        return tokenizer
 
     @classmethod
     def load(
@@ -293,12 +295,10 @@ class TextTokenizer:
 
             # 固定の最大シーケンス長を使用
             max_sequence_length = CONFIG.model_hyperparameters.max_seq_length
-            max_len = max(len(tokens) for tokens in tokenized_texts) if tokenized_texts else 0
-            # max_lenをmax_sequence_lengthで制限
-            max_len = min(max_len, max_sequence_length)
 
             padded_tokens = []
             for tokens in tokenized_texts:
+                # すべてのシーケンスをmax_sequence_lengthに切り詰め
                 if len(tokens) > max_sequence_length:
                     # シーケンスがmax_sequence_lengthより長い場合は切り詰め、警告をログに記録
                     logger.warning(
@@ -307,10 +307,10 @@ class TextTokenizer:
                     )
                     tokens = tokens[:max_sequence_length]
 
-                if len(tokens) < max_len:
-                    # パディングを追加
-                    tokens = tokens + [pad_id] * (max_len - len(tokens))
-                # len(tokens) == max_len の場合はそのまま使用（スライシング不要）
+                # すべてのシーケンスをmax_sequence_lengthにパディング
+                if len(tokens) < max_sequence_length:
+                    tokens = tokens + [pad_id] * (max_sequence_length - len(tokens))
+                # len(tokens) == max_sequence_length の場合はそのまま使用
                 padded_tokens.append(tokens)
 
             return torch.tensor(padded_tokens, dtype=torch.long, device=self.device)

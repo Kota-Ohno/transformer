@@ -85,10 +85,13 @@ class FeedForward(nn.Module):
         Returns:
             出力テンソル [batch_size, seq_len, d_model]
         """
-        # 1つ目の線形層 + ReLU + ドロップアウト
-        x = self.dropout(torch.relu(self.linear1(x)))
+        # 1つ目の線形層 + ReLU
+        x = torch.relu(self.linear1(x))
 
         # 2つ目の線形層
         x = self.linear2(x)
+
+        # ドロップアウトを2番目の線形層の後に適用
+        x = self.dropout(x)
 
         return x
