@@ -88,18 +88,23 @@ class TextTokenizer:
         # save_path_src/save_path_tgtが指定されている場合は、明示的に保存を実行
         tokenizer = cls(sp_src=sp_src, sp_tgt=sp_tgt)
         if save_path_src:
-            # 指定されたパスに保存（拡張子を追加）
+            # 拡張子付きパスを計算
             save_path_src_with_ext = (
                 save_path_src if save_path_src.endswith(".model") else f"{save_path_src}.model"
             )
-            tokenizer.save_model(save_path_src, is_source=True)
+            # 拡張子付きパスを save_model に渡す（save_model 内で存在チェックが行われる）
+            # save_model は既に拡張子がある場合は追加しないので、拡張子付きパスを渡す
+            tokenizer.save_model(save_path_src_with_ext, is_source=True)
+            # 使用されたパス（拡張子付き）を設定
             tokenizer.sp_src_path = save_path_src_with_ext
         if save_path_tgt:
-            # 指定されたパスに保存（拡張子を追加）
+            # 拡張子付きパスを計算
             save_path_tgt_with_ext = (
                 save_path_tgt if save_path_tgt.endswith(".model") else f"{save_path_tgt}.model"
             )
-            tokenizer.save_model(save_path_tgt, is_source=False)
+            # 拡張子付きパスを save_model に渡す（save_model 内で存在チェックが行われる）
+            tokenizer.save_model(save_path_tgt_with_ext, is_source=False)
+            # 使用されたパス（拡張子付き）を設定
             tokenizer.sp_tgt_path = save_path_tgt_with_ext
 
         return tokenizer

@@ -4,7 +4,16 @@
 import math
 import torch
 
-class WarmupScheduler(torch.optim.lr_scheduler._LRScheduler):
+# PyTorch 2.0以降では LRScheduler がパブリックAPIとして利用可能
+# 後方互換性のために _LRScheduler も確認
+try:
+    # PyTorch 2.0以降のパブリックAPIを試す
+    _BaseScheduler = torch.optim.lr_scheduler.LRScheduler
+except AttributeError:
+    # 古いバージョンの場合はプライベートAPIを使用
+    _BaseScheduler = torch.optim.lr_scheduler._LRScheduler
+
+class WarmupScheduler(_BaseScheduler):
     """
     ウォームアップ付きの学習率スケジューラ
     """

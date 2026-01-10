@@ -160,9 +160,11 @@ def _load_and_prepare_data(
         logging.info(f"トレーニングサンプル数を制限します: {len(train_token_ids)} → {args.limit_samples}")
         import random
         # 再現性のためシードを設定してからシャッフル
+        # 元のリストを変更しないようにコピーを作成
+        train_token_ids_copy = train_token_ids.copy()
         rng = random.Random(args.seed)
-        rng.shuffle(train_token_ids)
-        train_token_ids = train_token_ids[:args.limit_samples]
+        rng.shuffle(train_token_ids_copy)
+        train_token_ids = train_token_ids_copy[:args.limit_samples]
 
     # ボキャブラリの読み込み
     input_vocab = torch.load(get_input_vocab_path(), weights_only=True)

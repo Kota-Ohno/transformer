@@ -44,12 +44,25 @@ class TranslationModel(nn.Module):
         """
         return create_tgt_mask(tgt, self.tgt_pad_idx)
 
-    def forward(self, src: torch.Tensor, tgt: torch.Tensor):
+    def forward(self, src: torch.Tensor, tgt: torch.Tensor, cache=None):
+        """
+        フォワードパスを実行します。
+
+        Args:
+            src: ソースシーケンス [batch_size, src_len]
+            tgt: ターゲットシーケンス [batch_size, tgt_len]
+            cache: キャッシュ情報（推論時に使用、オプション）
+
+        Returns:
+            output: 出力テンソル [batch_size, tgt_len, vocab_size]
+            cache_or_attention: キャッシュが提供された場合はキャッシュ、そうでない場合はNone
+        """
         src_mask = self.make_src_mask(src)
         tgt_mask = self.make_tgt_mask(tgt)
         enc_src = self.encoder(src, src_mask)
-        output, attention = self.decoder(tgt, enc_src, tgt_mask, src_mask)
-        return output, attention
+        output, new_cache = self.decoder(tgt, enc_src, tgt_mask, src_mask, cache=cache)
+        # トレーニング時（cache=None）は None を返し、推論時（cacheが提供された場合）はキャッシュを返す
+        return output, new_cache if cache is not None else None
 
     def predict(self, src, max_length=None, start_token=2, end_token=3):
         """

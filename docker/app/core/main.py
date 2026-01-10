@@ -170,6 +170,24 @@ def show_config_summary():
         print(f"\n{Colors.ERROR}警告: 設定情報の取得中にエラーが発生しました: {e}{Colors.RESET}\n")
         raise RuntimeError(error_msg) from e
 
+def non_negative_int(value: str) -> int:
+    """非負の整数を検証する関数。
+
+    Args:
+        value: 文字列形式の整数値
+
+    Returns:
+        非負の整数値
+
+    Raises:
+        argparse.ArgumentTypeError: 値が負の整数の場合
+    """
+    int_value = int(value)
+    if int_value < 0:
+        raise argparse.ArgumentTypeError(f"--limit-samples は0以上の整数である必要があります。指定された値: {int_value}")
+    return int_value
+
+
 def main() -> int:
     """メイン関数"""
     # コマンドライン引数の解析
@@ -180,8 +198,8 @@ def main() -> int:
                         help='高速モード: トレーニング時間を短縮するための最適化設定を適用します')
     parser.add_argument('--small-model', action='store_true',
                         help='小さいモデルを使用: メモリ使用量を削減し、トレーニング速度を向上させます')
-    parser.add_argument('--limit-samples', type=int, default=0,
-                        help='トレーニングに使用するサンプル数を制限します（開発用）')
+    parser.add_argument('--limit-samples', type=non_negative_int, default=0,
+                        help='トレーニングに使用するサンプル数を制限します（開発用、0以上）')
     args, unknown_args = parser.parse_known_args()
 
     # 環境変数を設定
