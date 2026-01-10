@@ -180,9 +180,17 @@ def save_checkpoint(
             logging.info(f"最良モデルを保存しました: {best_model_path}")
 
             # アトミック保存が成功した後、古いbest_model_*.pthファイルを削除
+            # 現在のファイル名は"best_model.pth"だが、レガシーパターン"best_model_*.pth"もサポート
             try:
+                # 現在のファイル名とレガシーパターンの両方をチェック
+                best_model_path_current = os.path.join(checkpoint_dir, "best_model.pth")
                 old_best_models = glob.glob(os.path.join(checkpoint_dir, "best_model_*.pth"))
+
+                # 現在のファイル以外の古いファイルを削除
                 for old_file in old_best_models:
+                    # 現在のファイルと同じ場合はスキップ
+                    if os.path.abspath(old_file) == os.path.abspath(best_model_path_current):
+                        continue
                     try:
                         os.remove(old_file)
                         logging.info(f"古い最良モデルファイルを削除しました: {old_file}")
@@ -241,9 +249,10 @@ def load_checkpoint(
         is_trusted = False
         if trusted_paths is not None:
             # 明示的に信頼できるパスが指定されている場合
-            abs_checkpoint_path = os.path.abspath(checkpoint_path)
+            # シンボリックリンクを解決して比較（is_trusted_checkpoint_pathと一貫性を保つ）
+            resolved_checkpoint_path = Path(checkpoint_path).resolve(strict=False)
             is_trusted = any(
-                os.path.abspath(trusted_path) == abs_checkpoint_path
+                Path(trusted_path).resolve(strict=False) == resolved_checkpoint_path
                 for trusted_path in trusted_paths
             )
         else:

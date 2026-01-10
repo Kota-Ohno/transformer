@@ -4,7 +4,14 @@ import os
 import logging
 import traceback
 from typing import Dict, Any, Set, Optional
-from . import constants
+
+# constantsモジュールの安全なインポート
+try:
+    from . import constants
+    _constants_available = True
+except ImportError:
+    _constants_available = False
+    logging.warning("constantsモジュールのインポートに失敗しました。デフォルト値を使用します。")
 
 # 評価指標用のダウンロード
 def download_nltk_resources(
@@ -169,8 +176,15 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
                 continue
             word = id2word[idx]
             # 特殊トークンをスキップする場合
-            if skip_special and word in constants.SPECIAL_TOKENS:
-                continue
+            if skip_special:
+                # constantsモジュールが利用可能でSPECIAL_TOKENS属性が存在する場合のみチェック
+                if _constants_available and hasattr(constants, 'SPECIAL_TOKENS'):
+                    if word in constants.SPECIAL_TOKENS:
+                        continue
+                else:
+                    # フォールバック: 一般的な特殊トークンをチェック
+                    if word in {'<pad>', '<unk>', '<s>', '</s>'}:
+                        continue
             words.append(word)
 
         # 単語を連結して文字列にして返す

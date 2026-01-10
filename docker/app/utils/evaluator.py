@@ -163,7 +163,8 @@ def evaluate(
                     avg_batch_time = total_batch_time / (batch_idx + 1)
                     avg_inference_time = total_inference_time / (batch_idx + 1)
                     logging.info(f"評価進捗: [{batch_idx+1}/{max_batches}], "
-                                f"バッチ時間: {avg_batch_time:.4f}秒")
+                                f"バッチ時間: {avg_batch_time:.4f}秒, "
+                                f"推論時間: {avg_inference_time:.4f}秒")
 
                 # 中間変数の削除（メモリ効率化）
                 del src, tgt, tgt_input, tgt_output, output, output_flat, tgt_output_flat

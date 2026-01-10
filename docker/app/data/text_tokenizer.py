@@ -85,27 +85,22 @@ class TextTokenizer:
             train_texts_src, train_texts_tgt, save_path_src, save_path_tgt
         )
 
-        # save_path_src/save_path_tgtが指定されているが、訓練時に直接保存されなかった場合のフォールバック
-        # （train_and_load_sp_modelsがデフォルトパスに保存した場合、指定されたパスにコピー）
+        # save_path_src/save_path_tgtが指定されている場合は、明示的に保存を実行
         tokenizer = cls(sp_src=sp_src, sp_tgt=sp_tgt)
-        if save_path_src or save_path_tgt:
-            # 訓練時に指定されたパスに保存されなかった場合（デフォルトパスに保存された場合）のみコピー
-            if save_path_src:
-                # 指定されたパスにファイルが存在しない場合のみコピー
-                save_path_src_with_ext = (
-                    save_path_src if save_path_src.endswith(".model") else f"{save_path_src}.model"
-                )
-                if not os.path.exists(save_path_src_with_ext):
-                    tokenizer.save_model(save_path_src, is_source=True)
-                    tokenizer.sp_src_path = save_path_src_with_ext
-            if save_path_tgt:
-                # 指定されたパスにファイルが存在しない場合のみコピー
-                save_path_tgt_with_ext = (
-                    save_path_tgt if save_path_tgt.endswith(".model") else f"{save_path_tgt}.model"
-                )
-                if not os.path.exists(save_path_tgt_with_ext):
-                    tokenizer.save_model(save_path_tgt, is_source=False)
-                    tokenizer.sp_tgt_path = save_path_tgt_with_ext
+        if save_path_src:
+            # 指定されたパスに保存（拡張子を追加）
+            save_path_src_with_ext = (
+                save_path_src if save_path_src.endswith(".model") else f"{save_path_src}.model"
+            )
+            tokenizer.save_model(save_path_src, is_source=True)
+            tokenizer.sp_src_path = save_path_src_with_ext
+        if save_path_tgt:
+            # 指定されたパスに保存（拡張子を追加）
+            save_path_tgt_with_ext = (
+                save_path_tgt if save_path_tgt.endswith(".model") else f"{save_path_tgt}.model"
+            )
+            tokenizer.save_model(save_path_tgt, is_source=False)
+            tokenizer.sp_tgt_path = save_path_tgt_with_ext
 
         return tokenizer
 
@@ -272,7 +267,11 @@ class TextTokenizer:
         texts = list(texts)
 
         if not texts:
-            return torch.tensor([], dtype=torch.long, device=self.device) if return_tensors else []
+            if return_tensors:
+                # 空テンソルを[0, max_seq_length]の形状で返す
+                max_sequence_length = CONFIG.model_hyperparameters.max_seq_length
+                return torch.empty((0, max_sequence_length), dtype=torch.long, device=self.device)
+            return []
 
         # バッチサイズの決定
         if batch_size is None:
@@ -286,12 +285,36 @@ class TextTokenizer:
         # テンソルに変換（必要な場合）
         if return_tensors:
             # パディングを追加してテンソルに変換
-            # SentencePieceモデルからpad_idを取得
+            # SentencePieceモデルからpad_idを取得（pad_id() -> eos_id() -> 専用padトークン追加の順で試行）
+            pad_id = None
             if hasattr(model, 'pad_id') and callable(model.pad_id):
                 pad_id_value = model.pad_id()
-                pad_id = pad_id_value if pad_id_value is not None and pad_id_value >= 0 else 0
-            else:
+                if pad_id_value is not None and pad_id_value >= 0:
+                    pad_id = pad_id_value
+
+            # pad_idが取得できなかった場合はeos_idを試す
+            if pad_id is None:
+                if hasattr(model, 'eos_id') and callable(model.eos_id):
+                    eos_id_value = model.eos_id()
+                    if eos_id_value is not None and eos_id_value >= 0:
+                        pad_id = eos_id_value
+                        logger.warning(
+                            "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
+                        )
+
+            # それでも取得できなかった場合は専用のpadトークンを追加する必要がある
+            # この場合はエラーを出すか、デフォルト値を使う（SentencePieceモデルの設定を確認）
+            if pad_id is None:
+                logger.error(
+                    "pad_idとeos_idの両方が取得できませんでした。"
+                    "SentencePieceモデルに<pad>トークンが含まれているか確認してください。"
+                )
+                # フォールバック: 0を使用（ただし警告を出す）
                 pad_id = 0
+                logger.warning(
+                    "pad_idの取得に失敗したため、0をパディングトークンとして使用します。"
+                    "これは<unk>トークンと衝突する可能性があります。"
+                )
 
             # 固定の最大シーケンス長を使用
             max_sequence_length = CONFIG.model_hyperparameters.max_seq_length
