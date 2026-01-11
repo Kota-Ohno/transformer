@@ -411,7 +411,7 @@ class GlobalConfig:
         """
         if os.path.exists(config_path):
             try:
-                with open(config_path, "r") as f:
+                with open(config_path, "r", encoding="utf-8") as f:
                     user_config = json.load(f)
                     for section, values in user_config.items():
                         if hasattr(self, section):

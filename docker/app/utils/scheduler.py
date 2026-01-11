@@ -40,7 +40,7 @@ class WarmupScheduler(_BaseScheduler):
 
     def get_lr(self):
         step = max(self.last_epoch + 1, 1)
-        if step < self.warmup_steps:
+        if step <= self.warmup_steps:
             # 共有warmup乗数を計算
             common_lr = (self.d_model ** -0.5) * (step * self.warmup_steps ** -1.5)
             # warmup終了時の共通値を計算

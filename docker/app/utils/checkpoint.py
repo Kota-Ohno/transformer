@@ -337,7 +337,12 @@ def find_latest_checkpoint() -> Optional[str]:
     if not os.path.exists(checkpoint_dir):
         return None
 
-    checkpoints: list[str] = [os.path.join(checkpoint_dir, f) for f in os.listdir(checkpoint_dir) if f.startswith("checkpoint")]
+    # 通常ファイルで、checkpointで始まり、.pth拡張子を持つもののみをフィルタリング
+    checkpoints: list[str] = [
+        os.path.join(checkpoint_dir, f)
+        for f in os.listdir(checkpoint_dir)
+        if f.startswith("checkpoint") and f.endswith(".pth") and os.path.isfile(os.path.join(checkpoint_dir, f))
+    ]
     if not checkpoints:
         return None
 

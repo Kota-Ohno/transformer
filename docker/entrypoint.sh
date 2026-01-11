@@ -39,7 +39,7 @@ if [ -z "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -z "$TRANSFORMER_DEVICE" ]; then
         fi
     fi
 else
-    echo "Device settings detected from environment variables: TRANSFORMER_GLOBAL_DEVICE=$TRANSFORMER_GLOBAL_DEVICE, TRANSFORMER_DEVICE=$TRANSFORMER_DEVICE"
+    echo "Device settings detected from environment variables: TRANSFORMER_GLOBAL_DEVICE=$TRANSFORMER_GLOBAL_DEVICE, TRANSFORMER_DEVICE=$TRANSFORMER_DEVICE" >&2
     # 一方だけが設定されている場合は、もう一方も同じ値に設定（後方互換性）
     if [ -n "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -z "$TRANSFORMER_DEVICE" ]; then
         export TRANSFORMER_DEVICE="$TRANSFORMER_GLOBAL_DEVICE"

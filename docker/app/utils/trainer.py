@@ -19,9 +19,6 @@ from utils.constants import (
 )
 from utils.logging_config import setup_logging
 
-# ロギング設定
-setup_logging()
-
 class Trainer:
     def __init__(self, model, train_loader, val_loader, optimizer, criterion, scheduler, scaler, device, args, input_vocab, output_vocab):
         self.model = model
@@ -355,6 +352,8 @@ class Trainer:
         """
         トレーニングループを実行します。
         """
+        # ロギング設定（トレーニング開始前に一度だけ実行）
+        setup_logging()
         setup_checkpointing_directory()
 
         start_epoch = self._load_checkpoint_if_needed()
