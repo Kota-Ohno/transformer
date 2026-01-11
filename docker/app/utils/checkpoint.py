@@ -145,7 +145,10 @@ def save_checkpoint(
     current_date = datetime.now().strftime("%Y%m%d")
 
     # モデル設定情報を取得
-    if hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
+    # num_layersの優先順位: model_num_layers > model.encoder.layers > CONFIG
+    if model_num_layers is not None:
+        num_layers = model_num_layers
+    elif hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
         num_layers = len(model.encoder.layers)
     else:
         num_layers = CONFIG.model_hyperparameters.num_layers
@@ -153,7 +156,6 @@ def save_checkpoint(
     # 引数で渡された値があれば優先して使用
     hidden_size = model_hidden_size or CONFIG.model_hyperparameters.hidden_size
     num_heads = model_num_heads or CONFIG.model_hyperparameters.num_heads
-    num_layers = model_num_layers or num_layers
 
     # モデル設定を辞書に保存
     model_config = {

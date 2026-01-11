@@ -41,15 +41,16 @@ class WarmupScheduler(_BaseScheduler):
     def get_lr(self):
         step = max(self.last_epoch + 1, 1)
         if step <= self.warmup_steps:
-            # 共有warmup乗数を計算
-            common_lr = (self.d_model ** -0.5) * (step * self.warmup_steps ** -1.5)
-            # warmup終了時の共通値を計算
-            warmup_end = (self.d_model ** -0.5) * (self.warmup_steps ** -0.5)
-            # 各グループのLRをスケールして、warmup終了時にbase_lrと一致させる
-            # warmup中はmin_lrのクランプを適用しない（不連続性を避けるため）
+            # Noamスタイルのウォームアップ: d_modelが学習率に影響する
+            # scale = d_model**-0.5 * min(step**-0.5, step * warmup_steps**-1.5)
+            scale = (self.d_model ** -0.5) * min(
+                step ** -0.5,
+                step * (self.warmup_steps ** -1.5)
+            )
+            # 各グループのLRを計算: lr_i = base_lr * scale
             lrs = []
             for base_lr in self.base_lrs:
-                lr_i = common_lr * (base_lr / warmup_end)
+                lr_i = base_lr * scale
                 lrs.append(lr_i)
             return lrs
         else:

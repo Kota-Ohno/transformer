@@ -6,12 +6,26 @@ import traceback
 from typing import Dict, Any, Set, Optional
 
 # constantsモジュールの安全なインポート
+_constants_available = False
+_constants_import_error: Optional[ImportError] = None
+_constants_warning_logged = False
+
 try:
     from . import constants
     _constants_available = True
-except ImportError:
+except ImportError as e:
     _constants_available = False
-    logging.warning("constantsモジュールのインポートに失敗しました。デフォルト値を使用します。")
+    _constants_import_error = e
+
+def _maybe_log_constants_import_failure() -> None:
+    """constantsモジュールのインポート失敗をロギング（初回のみ、ロギング設定後に呼び出す）"""
+    global _constants_warning_logged
+    if not _constants_available and not _constants_warning_logged and _constants_import_error is not None:
+        logging.warning(
+            f"constantsモジュールのインポートに失敗しました。デフォルト値を使用します。"
+            f"エラー詳細: {_constants_import_error}"
+        )
+        _constants_warning_logged = True
 
 # 評価指標用のダウンロード
 def download_nltk_resources(
@@ -169,6 +183,7 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
     Returns:
         変換されたテキスト
     """
+    _maybe_log_constants_import_failure()
     try:
         # テンソルの場合はリストに変換
         if isinstance(ids, torch.Tensor):
