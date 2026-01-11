@@ -22,6 +22,10 @@ def validate_token_ids(
         TypeError: テンソルが整数型でない場合
         ValueError: トークンIDが有効範囲外の場合
     """
+    # vocab_sizeの検証（正の整数であることを確認）
+    if not isinstance(vocab_size, int) or vocab_size <= 0:
+        raise ValueError(f"vocab_size must be positive, got {vocab_size}")
+
     # 整数型チェック
     integer_dtypes = {torch.int8, torch.int16, torch.int32, torch.int64, torch.long}
     if x.dtype not in integer_dtypes:
@@ -52,6 +56,9 @@ def validate_token_ids(
             )
     else:
         # 本番モード: GPU側のブールチェック
+        # vocab_sizeの検証（正の整数であることを確認）
+        if not isinstance(vocab_size, int) or vocab_size <= 0:
+            raise ValueError("vocab_size must be a positive integer")
         # 空テンソルのチェックを最初に実行（torch.allが空テンソルに対してTrueを返すため）
         if x.numel() == 0:
             raise ValueError(
