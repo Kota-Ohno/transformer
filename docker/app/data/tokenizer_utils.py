@@ -241,6 +241,8 @@ def tokenize_with_sentencepiece(
     Raises:
         TypeError: sp_modelがNoneまたはencode_as_idsメソッドを持たない場合、
                    またはtextがNoneまたはstr型でない場合
+        ValueError: langが指定されている場合、normalize_textに無効または
+                   サポートされていないlangが渡された場合
     """
     # sp_modelの検証
     if sp_model is None:

@@ -46,9 +46,10 @@ class WarmupScheduler(_BaseScheduler):
             # warmup終了時の共通値を計算
             warmup_end = (self.d_model ** -0.5) * (self.warmup_steps ** -0.5)
             # 各グループのLRをスケールして、warmup終了時にbase_lrと一致させる
+            # warmup中はmin_lrのクランプを適用しない（不連続性を避けるため）
             lrs = []
             for base_lr in self.base_lrs:
-                lr_i = max(self.min_lr, common_lr * (base_lr / warmup_end))
+                lr_i = common_lr * (base_lr / warmup_end)
                 lrs.append(lr_i)
             return lrs
         else:

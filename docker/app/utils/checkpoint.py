@@ -259,11 +259,25 @@ def load_checkpoint(
         if trusted_paths is not None:
             # 明示的に信頼できるパスが指定されている場合
             # シンボリックリンクを解決して比較（is_trusted_checkpoint_pathと一貫性を保つ）
-            resolved_checkpoint_path = Path(checkpoint_path).resolve(strict=False)
-            is_trusted = any(
-                Path(trusted_path).resolve(strict=False) == resolved_checkpoint_path
-                for trusted_path in trusted_paths
-            )
+            resolved_checkpoint_path = Path(checkpoint_path).resolve()
+            # 各trusted_pathを解決し、チェックポイントパスがそのパスと等しいか、その中に含まれるかチェック
+            for trusted_path in trusted_paths:
+                resolved_trusted_path = Path(trusted_path).resolve(strict=False)
+                # ファイルまたはディレクトリのいずれかとしてチェック
+                if resolved_trusted_path.is_file():
+                    # ファイルの場合は完全一致をチェック
+                    if resolved_checkpoint_path == resolved_trusted_path:
+                        is_trusted = True
+                        break
+                elif resolved_trusted_path.is_dir():
+                    # ディレクトリの場合は、チェックポイントパスがそのディレクトリ内にあるかチェック
+                    try:
+                        resolved_checkpoint_path.relative_to(resolved_trusted_path)
+                        is_trusted = True
+                        break
+                    except ValueError:
+                        # 相対パスでない場合は次のパスをチェック
+                        continue
         else:
             # デフォルトの信頼性チェック（models/checkpoints/ または models/ 内かどうか）
             is_trusted = is_trusted_checkpoint_path(checkpoint_path)
