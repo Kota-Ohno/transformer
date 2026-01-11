@@ -446,7 +446,10 @@ class GlobalConfig:
         環境変数で'cuda'が指定されていても、実際にCUDAが利用できない場合は
         警告を出して'cpu'にフォールバックします。
         """
-        if self.device.lower() == 'cuda':
+        # 正規化されたデバイス名を取得（一度だけ計算）
+        normalized = self.device.lower()
+
+        if normalized == 'cuda':
             if not torch.cuda.is_available():
                 logging.warning(
                     "環境変数でCUDAが指定されましたが、CUDAが利用できません。"
@@ -460,13 +463,18 @@ class GlobalConfig:
                     device_idx = torch.cuda.current_device()
                     device_name = torch.cuda.get_device_name(device_idx)
                     logging.info(f"CUDAデバイスが利用可能です: {device_name}")
+                    # 成功時に正規化された値を設定
+                    self.device = 'cuda'
                 except (RuntimeError, AssertionError) as e:
                     logging.warning(
                         f"CUDAデバイスへのアクセスに失敗しました: {e}。"
                         "CPUにフォールバックします。"
                     )
                     self.device = 'cpu'
-        elif self.device.lower() not in ('cpu', 'cuda'):
+        elif normalized == 'cpu':
+            # CPUの場合は正規化された値を設定
+            self.device = 'cpu'
+        else:
             logging.warning(
                 f"無効なデバイス設定 '{self.device}' が指定されました。"
                 "有効な値は 'cpu' または 'cuda' です。CPUにフォールバックします。"

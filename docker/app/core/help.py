@@ -166,25 +166,41 @@ def display_topic(topic: str | None) -> None:
 # メインの処理関数
 def main():
     while True:
-        os.system('cls' if os.name == 'nt' else 'clear')
-        print_header("Transformer翻訳モデル - 対話型ヘルプ")
+        try:
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print_header("Transformer翻訳モデル - 対話型ヘルプ")
 
-        print(MAIN_MENU)
-        choice = input().strip().lower()
+            print(MAIN_MENU)
+            try:
+                choice = input().strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                print()  # 改行を出力
+                break
 
-        if choice == 'q':
+            if choice == 'q':
+                break
+
+            os.system('cls' if os.name == 'nt' else 'clear')
+
+            # 数字キーをトピック名に変換
+            topic = NUMBER_TO_TOPIC.get(choice, choice)
+
+            display_topic(topic)
+            if topic == 'all' or topic in TOPIC_FUNCTIONS:
+                try:
+                    input("続行するにはEnterキーを押してください...")
+                except (KeyboardInterrupt, EOFError):
+                    print()  # 改行を出力
+                    break
+            else:
+                try:
+                    input("続行するにはEnterキーを押してください...")
+                except (KeyboardInterrupt, EOFError):
+                    print()  # 改行を出力
+                    break
+        except (KeyboardInterrupt, EOFError):
+            print()  # 改行を出力
             break
-
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-        # 数字キーをトピック名に変換
-        topic = NUMBER_TO_TOPIC.get(choice, choice)
-
-        display_topic(topic)
-        if topic == 'all' or topic in TOPIC_FUNCTIONS:
-            input("続行するにはEnterキーを押してください...")
-        else:
-            time.sleep(1)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="対話型ヘルプシステム")

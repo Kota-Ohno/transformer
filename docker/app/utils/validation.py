@@ -56,9 +56,6 @@ def validate_token_ids(
             )
     else:
         # 本番モード: GPU側のブールチェック
-        # vocab_sizeの検証（正の整数であることを確認）
-        if not isinstance(vocab_size, int) or vocab_size <= 0:
-            raise ValueError("vocab_size must be a positive integer")
         # 空テンソルのチェックを最初に実行（torch.allが空テンソルに対してTrueを返すため）
         if x.numel() == 0:
             raise ValueError(

@@ -186,7 +186,8 @@ class TextTokenizer:
         tracked_path = self.sp_src_path if is_source else self.sp_tgt_path
 
         # 保存先のディレクトリを作成
-        save_dir = os.path.dirname(model_path) if os.path.dirname(model_path) else "."
+        dir_name = os.path.dirname(model_path)
+        save_dir = dir_name if dir_name else "."
         if save_dir and save_dir != ".":
             os.makedirs(save_dir, exist_ok=True)
 

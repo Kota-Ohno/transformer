@@ -207,7 +207,19 @@ def _chunked_predict(
     seq_len = tensor.size(1)
     # 入力が十分短い場合はそのまま実行
     if seq_len <= initial_chunk_size:
-        return _run_predict(tensor)
+        try:
+            return _run_predict(tensor)
+        except RuntimeError as e:
+            # OOMエラーの場合はchunked処理にフォールバック
+            if "out of memory" in str(e).lower():
+                logging.warning(
+                    f"短い入力でもOOMが発生しました (seq_len={seq_len})。"
+                    "チャンク推論にフォールバックします。"
+                )
+                # フォールバック: chunked処理を続行
+            else:
+                # その他のRuntimeErrorは再発生
+                raise
 
     chunk_size = max(min(initial_chunk_size, seq_len), min_chunk_size)
     original_error = None

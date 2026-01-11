@@ -404,7 +404,14 @@ def _initialize_model(
         try:
             logging.info("PyTorch JITコンパイルを適用します")
             import torch._dynamo as dynamo
-            torch._dynamo.config.suppress_errors = True
+            # デバッグモードでない場合はエラー抑制を無効化（開発時にエラーを確認できるように）
+            suppress_errors = CONFIG.training_config.debug_mode
+            torch._dynamo.config.suppress_errors = suppress_errors
+            if suppress_errors:
+                logging.warning(
+                    "torch._dynamo.config.suppress_errorsがTrueに設定されています。"
+                    "JITコンパイルエラーが非表示になる可能性があります。"
+                )
             torch._dynamo.config.cache_size_limit = 64
 
             if CONFIG.training_config.debug_mode:

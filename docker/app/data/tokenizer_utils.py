@@ -151,7 +151,7 @@ def train_and_load_sp_models(
     return sp_src, sp_tgt
 
 # テキスト正規化
-def normalize_text(text: str, lang: str, normalize_numeric: str = '<NUM>') -> str:
+def normalize_text(text: str, lang: str, normalize_numeric: Optional[Union[str, bool]] = '<NUM>') -> str:
     """
     基本的なテキスト正規化を行います
 
@@ -215,7 +215,7 @@ def tokenize_with_sentencepiece(
     text: str,
     sp_model: spm.SentencePieceProcessor,
     lang: Optional[str] = None,
-    normalize_numeric: str = '<NUM>'
+    normalize_numeric: Optional[Union[str, bool]] = '<NUM>'
 ) -> List[int]:
     """
     sentencepieceモデルを使ってテキストをトークナイズします。
