@@ -22,8 +22,8 @@ def validate_token_ids(
         TypeError: テンソルが整数型でない場合
         ValueError: トークンIDが有効範囲外の場合
     """
-    # vocab_sizeの検証（正の整数であることを確認）
-    if not isinstance(vocab_size, int) or vocab_size <= 0:
+    # vocab_sizeの検証（正の整数であることを確認、boolは除外）
+    if not isinstance(vocab_size, int) or isinstance(vocab_size, bool) or vocab_size <= 0:
         raise ValueError(f"vocab_size must be positive, got {vocab_size}")
 
     # 整数型チェック

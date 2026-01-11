@@ -183,19 +183,27 @@ class GlobalConfig:
         設定の初期化処理。
 
         処理順序:
-        1. GPUメモリに基づいてモデルのハイパーパラメータを自動調整
-        2. config.jsonファイルから設定を読み込み（存在する場合）
-        3. 環境変数から設定を読み込み（最高優先度）
-        """
-        # GPUメモリに基づいてモデルのハイパーパラメータを調整
-        adjusted_model_config = ModelConfig.from_gpu_memory()
-        self.model_hyperparameters = ModelHyperparameters.from_model_config(adjusted_model_config)
+        1. config.jsonファイルから設定を読み込み（存在する場合）
+        2. 環境変数から設定を読み込み（最高優先度）
 
+        注意: GPUメモリに基づく自動調整は initialize_gpu_aware_defaults() で明示的に呼び出す必要があります。
+        """
         # config.jsonからのオーバーライド（最初に読み込む）
         self._load_from_json("config.json")
 
         # 環境変数からのオーバーライドとデバイス検証
         self._apply_env_overrides()
+
+    def initialize_gpu_aware_defaults(self):
+        """
+        GPUメモリに基づいてモデルのハイパーパラメータを自動調整します。
+
+        このメソッドは、GPUプローブが安全に行えるタイミングで明示的に呼び出す必要があります。
+        モジュールインポート時には呼び出されません。
+        """
+        # GPUメモリに基づいてモデルのハイパーパラメータを調整
+        adjusted_model_config = ModelConfig.from_gpu_memory()
+        self.model_hyperparameters = ModelHyperparameters.from_model_config(adjusted_model_config)
 
     def reload_from_env(self):
         """
@@ -490,8 +498,44 @@ class GlobalConfig:
         """
         return torch.device(self.device)
 
-# グローバル設定インスタンス
-CONFIG = GlobalConfig()
+# グローバル設定インスタンス（遅延初期化）
+_CONFIG: GlobalConfig | None = None
+
+
+def get_config() -> GlobalConfig:
+    """
+    グローバル設定インスタンスを取得します（遅延初期化）。
+
+    最初の呼び出し時に GlobalConfig を初期化し、GPUメモリに基づく設定調整を行います。
+    以降の呼び出しでは、同じインスタンスを返します。
+
+    Returns:
+        GlobalConfig: グローバル設定インスタンス
+    """
+    global _CONFIG
+    if _CONFIG is None:
+        _CONFIG = GlobalConfig()
+        # GPUメモリに基づく設定調整を実行（明示的な初期化）
+        _CONFIG.initialize_gpu_aware_defaults()
+    return _CONFIG
+
+
+def __getattr__(name: str) -> GlobalConfig:
+    """
+    モジュールレベルの属性アクセスを処理します。
+
+    CONFIG にアクセスした際に、遅延初期化を行います。
+    これにより、モジュールインポート時には GPU プローブが発生しません。
+
+    Args:
+        name: アクセスする属性名
+
+    Returns:
+        GlobalConfig: グローバル設定インスタンス（name が 'CONFIG' の場合）
+    """
+    if name == "CONFIG":
+        return get_config()
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
 
 
 def get_input_vocab_path() -> str:
