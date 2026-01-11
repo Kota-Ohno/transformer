@@ -41,7 +41,6 @@ def download_nltk_resources(
         all_resources = critical_resources
 
     try:
-
         # カスタムダウンロードディレクトリを設定（Docker環境に依存しない場所）
         # 環境変数NLTK_DATA_DIRから読み取る、フォールバックとしてutils.pyのディレクトリ + "nltk_data"
         nltk_data_dir = os.environ.get(
@@ -70,6 +69,13 @@ def download_nltk_resources(
                 )
                 if resource in critical_resources:
                     raise
+    except Exception as e:
+        exception_traceback = traceback.format_exc()
+        logging.error(
+            f"NLTKリソースのダウンロード処理中に予期しないエラーが発生しました: {e}\n"
+            f"完全な例外情報:\n{exception_traceback}"
+        )
+        raise
 
 # --- マスク生成関数 ---
 def create_padding_mask(seq: torch.Tensor, pad_idx: int) -> torch.Tensor:

@@ -7,6 +7,7 @@
 import os
 import argparse
 import time
+from typing import Callable, Any
 from wcwidth import wcswidth
 
 def print_header(title: str, width: int | None = None) -> None:
@@ -115,7 +116,7 @@ def display_augment_help():
     print("  python train.py --augment  # 推奨される使用方法\n")
 
 # トピック名から表示関数へのマッピング
-TOPIC_FUNCTIONS = {
+TOPIC_FUNCTIONS: dict[str, Callable[[], None]] = {
     'tokenizer': display_tokenizer_help,
     'train': display_train_help,
     'predict': display_predict_help,

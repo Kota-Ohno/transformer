@@ -28,6 +28,30 @@ from utils.logging_config import setup_logging
 setup_logging()
 
 
+def _vram_mb_to_bytes(vram_mb: int) -> int:
+    """VRAM閾値をMBからバイトに変換するヘルパー関数。
+
+    Args:
+        vram_mb: VRAM閾値（MB単位）
+
+    Returns:
+        VRAM閾値（バイト単位）
+    """
+    return vram_mb * BYTES_PER_MB
+
+
+def _vram_mb_to_gb(vram_mb: int) -> float:
+    """VRAM閾値をMBからGBに変換するヘルパー関数。
+
+    Args:
+        vram_mb: VRAM閾値（MB単位）
+
+    Returns:
+        VRAM閾値（GB単位）
+    """
+    return vram_mb / 1024.0
+
+
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """
     コマンドライン引数を解析します。
@@ -89,7 +113,7 @@ def _check_and_setup_gpu(args: argparse.Namespace) -> torch.device:
             else:
                 gpu_props = torch.cuda.get_device_properties(0)
                 # メモリ制約がある場合は高速トレーニングモードを自動的に有効化
-                vram_threshold_8gb_bytes = VRAM_THRESHOLD_8GB * BYTES_PER_MB  # VRAM_THRESHOLD_8GB is in MB
+                vram_threshold_8gb_bytes = _vram_mb_to_bytes(VRAM_THRESHOLD_8GB)
                 if gpu_props.total_memory < vram_threshold_8gb_bytes:
                     logging.info("GPUメモリが限られているため、高速トレーニングモードを自動的に有効化します")
                     args.fast = True
@@ -254,8 +278,8 @@ def _create_data_loaders(
         try:
             if torch.cuda.is_available():
                 vram_gb = torch.cuda.get_device_properties(0).total_memory / BYTES_PER_GB
-                vram_threshold_4gb_gb = VRAM_THRESHOLD_4GB / 1024  # MB to GB conversion
-                vram_threshold_8gb_gb = VRAM_THRESHOLD_8GB / 1024  # MB to GB conversion
+                vram_threshold_4gb_gb = _vram_mb_to_gb(VRAM_THRESHOLD_4GB)
+                vram_threshold_8gb_gb = _vram_mb_to_gb(VRAM_THRESHOLD_8GB)
                 if vram_gb < vram_threshold_4gb_gb:
                     adjusted_batch_size = min(batch_size, DEFAULT_BATCH_SIZE_SMALL_VRAM)
                 elif vram_gb < vram_threshold_8gb_gb:
