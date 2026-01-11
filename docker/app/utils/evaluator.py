@@ -382,7 +382,7 @@ def calculate_sacrebleu(
                     references_processed.append(' '.join(ref))
     elif references and isinstance(references[0], str):
         # すでに文字列
-        references_processed = references
+        references_processed = list(references)
     else:
         logging.warning("無効な参照形式です。SacreBLEU=0を返します。")
         return 0.0
@@ -401,7 +401,7 @@ def calculate_sacrebleu(
                 hypotheses_processed.append(' '.join(hyp))
     elif hypotheses and isinstance(hypotheses[0], str):
         # すでに文字列
-        hypotheses_processed = hypotheses
+        hypotheses_processed = list(hypotheses)
     else:
         logging.warning("無効な仮説形式です。SacreBLEU=0を返します。")
         return 0.0

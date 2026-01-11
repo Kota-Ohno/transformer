@@ -35,8 +35,8 @@ class ScaledDotProductAttention(nn.Module):
                 # float16の場合は表現可能な範囲を考慮して-1e4を使用
                 fill_value = -1e4
             else:
-                # その他のdtypeの場合はfinfo.maxを使用
-                fill_value = -torch.finfo(scores.dtype).max
+                # その他のdtypeの場合は適度に大きな負の定数を使用（数値安定性のため）
+                fill_value = scores.new_tensor(-1e9)
             scores = scores.masked_fill(mask == 0, fill_value)
 
         # アテンションウェイト計算
@@ -151,19 +151,6 @@ class MultiHeadAttention(nn.Module):
             # 新しいk/vをヘッド分割して4-D形状にする
             new_k = self.split_heads(new_k)  # [batch_size, num_heads, seq_len_new, d_k]
             new_v = self.split_heads(new_v)  # [batch_size, num_heads, seq_len_new, d_k]
-            # 新しいk/vの形状を検証
-            if new_k.size(0) != batch_size:
-                raise ValueError(f"new_k batch size mismatch. Expected {batch_size}, got {new_k.size(0)}")
-            if new_k.size(1) != self.num_heads:
-                raise ValueError(f"new_k num_heads mismatch. Expected {self.num_heads}, got {new_k.size(1)}")
-            if new_k.size(3) != self.d_k:
-                raise ValueError(f"new_k d_k mismatch. Expected {self.d_k}, got {new_k.size(3)}")
-            if new_v.size(0) != batch_size:
-                raise ValueError(f"new_v batch size mismatch. Expected {batch_size}, got {new_v.size(0)}")
-            if new_v.size(1) != self.num_heads:
-                raise ValueError(f"new_v num_heads mismatch. Expected {self.num_heads}, got {new_v.size(1)}")
-            if new_v.size(3) != self.d_k:
-                raise ValueError(f"new_v d_k mismatch. Expected {self.d_k}, got {new_v.size(3)}")
             # cached_k/cached_vと新しいk/vを結合（seq_len次元で結合）
             k = torch.cat([cached_k, new_k], dim=2)  # [batch_size, num_heads, seq_len_cached + seq_len_new, d_k]
             v = torch.cat([cached_v, new_v], dim=2)  # [batch_size, num_heads, seq_len_cached + seq_len_new, d_k]

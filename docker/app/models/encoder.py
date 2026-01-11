@@ -52,11 +52,11 @@ class EncoderLayer(nn.Module):
 class Encoder(nn.Module):
     """Transformerのエンコーダー"""
 
-    def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, dropout=0.1, max_seq_length=512):
+    def __init__(self, vocab_size, d_model, num_heads, num_layers, d_ff, dropout=0.1, max_seq_length=512, padding_idx=0):
         super(Encoder, self).__init__()
 
         # 単語埋め込み
-        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=0)
+        self.embedding = nn.Embedding(vocab_size, d_model, padding_idx=padding_idx)
 
         # 位置エンコーディング
         self.pos_encoding = PositionalEncoding(d_model, max_seq_length)

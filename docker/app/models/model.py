@@ -209,12 +209,13 @@ def create_transformer_model(input_vocab_size, output_vocab_size,
         if 'weight' in name:
             if 'embedding' in name:
                 # 埋め込み層は正規分布で初期化
-                # テンソルのランクをチェックしてから次元にアクセス
-                if param.dim() >= 2:
-                    std = param.shape[1] ** -0.5
-                else:
-                    # 1次元の場合は最初の次元を使用、またはフォールバック
-                    std = param.shape[0] ** -0.5 if param.shape[0] > 0 else 1.0
+                # 埋め込み重みは2Dテンソルである必要がある [vocab_size, embedding_dim]
+                if param.dim() != 2:
+                    raise ValueError(
+                        f"Expected embedding weight to be 2D [vocab_size, embedding_dim], "
+                        f"got {param.dim()}-D tensor for parameter '{name}'"
+                    )
+                std = param.shape[1] ** -0.5
                 nn.init.normal_(param, mean=0, std=std)
             elif 'norm' not in name:  # LayerNormは除外（デフォルトの初期化を使用）
                 if param.dim() > 1:
