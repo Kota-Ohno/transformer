@@ -6,7 +6,6 @@
 
 import os
 import argparse
-import time
 from typing import Callable
 from wcwidth import wcswidth
 
@@ -186,18 +185,11 @@ def main():
             topic = NUMBER_TO_TOPIC.get(choice, choice)
 
             display_topic(topic)
-            if topic == 'all' or topic in TOPIC_FUNCTIONS:
-                try:
-                    input("続行するにはEnterキーを押してください...")
-                except (KeyboardInterrupt, EOFError):
-                    print()  # 改行を出力
-                    break
-            else:
-                try:
-                    input("続行するにはEnterキーを押してください...")
-                except (KeyboardInterrupt, EOFError):
-                    print()  # 改行を出力
-                    break
+            try:
+                input("続行するにはEnterキーを押してください...")
+            except (KeyboardInterrupt, EOFError):
+                print()  # 改行を出力
+                break
         except (KeyboardInterrupt, EOFError):
             print()  # 改行を出力
             break

@@ -40,6 +40,13 @@ if [ -z "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -z "$TRANSFORMER_DEVICE" ]; then
     fi
 else
     echo "Device settings detected from environment variables: TRANSFORMER_GLOBAL_DEVICE=$TRANSFORMER_GLOBAL_DEVICE, TRANSFORMER_DEVICE=$TRANSFORMER_DEVICE" >&2
+    # 両方が設定されていて異なる値の場合はエラー
+    if [ -n "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -n "$TRANSFORMER_DEVICE" ]; then
+        if [ "$TRANSFORMER_GLOBAL_DEVICE" != "$TRANSFORMER_DEVICE" ]; then
+            echo "ERROR: conflicting values for TRANSFORMER_GLOBAL_DEVICE and TRANSFORMER_DEVICE: $TRANSFORMER_GLOBAL_DEVICE vs $TRANSFORMER_DEVICE" >&2
+            exit 1
+        fi
+    fi
     # 一方だけが設定されている場合は、もう一方も同じ値に設定（後方互換性）
     if [ -n "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -z "$TRANSFORMER_DEVICE" ]; then
         export TRANSFORMER_DEVICE="$TRANSFORMER_GLOBAL_DEVICE"

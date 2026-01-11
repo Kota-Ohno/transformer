@@ -1,6 +1,7 @@
 import os
 import shutil
 import torch
+import threading
 from typing import List, Union, Tuple, Optional
 from data.tokenizer_utils import normalize_text
 from data.tokenizer_utils import train_and_load_sp_models
@@ -58,8 +59,12 @@ class TextTokenizer:
         # モデルファイルのパスを追跡
         self.sp_src_path: Optional[str] = None
         self.sp_tgt_path: Optional[str] = None
-        # パディング警告ログのフラグ
+        # パディング警告ログのフラグ（スレッドセーフ）
         self._pad_warning_logged: bool = False
+        self._pad_warning_lock: threading.Lock = threading.Lock()
+        # 切り詰め警告ログのフラグ（スレッドセーフ）
+        self._truncate_warning_logged: bool = False
+        self._truncate_warning_lock: threading.Lock = threading.Lock()
 
     @classmethod
     def train(
@@ -309,11 +314,12 @@ class TextTokenizer:
                     eos_id_value = model.eos_id()
                     if eos_id_value is not None and eos_id_value >= 0:
                         pad_id = eos_id_value
-                        if not self._pad_warning_logged:
-                            logger.warning(
-                                "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
-                            )
-                            self._pad_warning_logged = True
+                        with self._pad_warning_lock:
+                            if not self._pad_warning_logged:
+                                logger.warning(
+                                    "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
+                                )
+                                self._pad_warning_logged = True
 
             # それでも取得できなかった場合は専用のpadトークンを追加する必要がある
             # この場合はエラーを出すか、デフォルト値を使う（SentencePieceモデルの設定を確認）
@@ -333,11 +339,14 @@ class TextTokenizer:
             for tokens in tokenized_texts:
                 # すべてのシーケンスをmax_sequence_lengthに切り詰め
                 if len(tokens) > max_sequence_length:
-                    # シーケンスがmax_sequence_lengthより長い場合は切り詰め、警告をログに記録
-                    logger.warning(
-                        f"トークンシーケンスがmax_sequence_length ({max_sequence_length}) を超えています "
-                        f"(長さ: {len(tokens)})。切り詰めます。"
-                    )
+                    # シーケンスがmax_sequence_lengthより長い場合は切り詰め、警告をログに記録（一度だけ）
+                    with self._truncate_warning_lock:
+                        if not self._truncate_warning_logged:
+                            logger.warning(
+                                f"トークンシーケンスがmax_sequence_length ({max_sequence_length}) を超えています "
+                                f"(長さ: {len(tokens)})。切り詰めます。"
+                            )
+                            self._truncate_warning_logged = True
                     tokens = tokens[:max_sequence_length]
 
                 # すべてのシーケンスをmax_sequence_lengthにパディング

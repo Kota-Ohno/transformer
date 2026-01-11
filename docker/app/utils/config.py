@@ -1,6 +1,7 @@
 import torch
 import os
 import json
+import threading
 from dataclasses import dataclass, field, is_dataclass
 from typing import List, Any, get_origin, get_args, Tuple
 import logging
@@ -182,28 +183,47 @@ class GlobalConfig:
         """
         設定の初期化処理。
 
-        処理順序:
-        1. config.jsonファイルから設定を読み込み（存在する場合）
-        2. 環境変数から設定を読み込み（最高優先度）
-
-        注意: GPUメモリに基づく自動調整は initialize_gpu_aware_defaults() で明示的に呼び出す必要があります。
+        処理順序（優先度の低い順）:
+        1. GPUメモリに基づく自動調整（デフォルト値の設定）
+        2. config.jsonファイルから設定を読み込み（存在する場合）
+        3. 環境変数から設定を読み込み（最高優先度）
         """
-        # config.jsonからのオーバーライド（最初に読み込む）
+        # GPUメモリに基づく設定調整を最初に実行（デフォルト値の設定）
+        self.initialize_gpu_aware_defaults()
+
+        # config.jsonからのオーバーライド
         self._load_from_json("config.json")
 
-        # 環境変数からのオーバーライドとデバイス検証
+        # 環境変数からのオーバーライドとデバイス検証（最高優先度）
         self._apply_env_overrides()
 
     def initialize_gpu_aware_defaults(self):
         """
         GPUメモリに基づいてモデルのハイパーパラメータを自動調整します。
 
-        このメソッドは、GPUプローブが安全に行えるタイミングで明示的に呼び出す必要があります。
-        モジュールインポート時には呼び出されません。
+        このメソッドは、未設定の値のみを設定する（idempotent）ように動作します。
+        __post_init__の最初で呼び出され、その後JSONと環境変数でオーバーライドされます。
         """
         # GPUメモリに基づいてモデルのハイパーパラメータを調整
+        # 既に設定されている値は上書きしない（idempotent）
         adjusted_model_config = ModelConfig.from_gpu_memory()
-        self.model_hyperparameters = ModelHyperparameters.from_model_config(adjusted_model_config)
+        adjusted_hyperparams = ModelHyperparameters.from_model_config(adjusted_model_config)
+
+        # 現在の値がデフォルト値の場合のみ更新（未設定の値のみ設定）
+        if self.model_hyperparameters.hidden_size == ModelHyperparameters.hidden_size:
+            self.model_hyperparameters.hidden_size = adjusted_hyperparams.hidden_size
+        if self.model_hyperparameters.num_heads == ModelHyperparameters.num_heads:
+            self.model_hyperparameters.num_heads = adjusted_hyperparams.num_heads
+        if self.model_hyperparameters.num_layers == ModelHyperparameters.num_layers:
+            self.model_hyperparameters.num_layers = adjusted_hyperparams.num_layers
+        if self.model_hyperparameters.d_ff == ModelHyperparameters.d_ff:
+            self.model_hyperparameters.d_ff = adjusted_hyperparams.d_ff
+        if self.model_hyperparameters.dropout_rate == ModelHyperparameters.dropout_rate:
+            self.model_hyperparameters.dropout_rate = adjusted_hyperparams.dropout_rate
+        if self.model_hyperparameters.max_seq_length == ModelHyperparameters.max_seq_length:
+            self.model_hyperparameters.max_seq_length = adjusted_hyperparams.max_seq_length
+        if self.model_hyperparameters.rel_pos_max_distance == ModelHyperparameters.rel_pos_max_distance:
+            self.model_hyperparameters.rel_pos_max_distance = adjusted_hyperparams.rel_pos_max_distance
 
     def reload_from_env(self):
         """
@@ -344,9 +364,18 @@ class GlobalConfig:
                     raise ValueError(f"Cannot convert {type(value).__name__} to float")
 
             elif expected_type is bool:
-                # 文字列からboolへの変換
+                # 文字列からboolへの変換（明示的なtrue/false値のみ受け入れる）
                 if isinstance(value, str):
-                    return value.lower() in ("true", "yes", "1", "on"), True
+                    value_lower = value.strip().lower()
+                    if value_lower in ("true", "yes", "1", "on"):
+                        return True, True
+                    elif value_lower in ("false", "no", "0", "off"):
+                        return False, True
+                    else:
+                        raise ValueError(
+                            f"Invalid boolean string value '{value}'. "
+                            f"Expected one of: 'true', 'yes', '1', 'on', 'false', 'no', '0', 'off' (case-insensitive)"
+                        )
                 elif isinstance(value, bool):
                     return value, True
                 elif isinstance(value, (int, float)):
@@ -500,23 +529,29 @@ class GlobalConfig:
 
 # グローバル設定インスタンス（遅延初期化）
 _CONFIG: GlobalConfig | None = None
+# 初期化用のロック（スレッドセーフティのため）
+_CONFIG_LOCK: threading.Lock = threading.Lock()
 
 
 def get_config() -> GlobalConfig:
     """
-    グローバル設定インスタンスを取得します（遅延初期化）。
+    グローバル設定インスタンスを取得します（遅延初期化、スレッドセーフ）。
 
-    最初の呼び出し時に GlobalConfig を初期化し、GPUメモリに基づく設定調整を行います。
+    最初の呼び出し時に GlobalConfig を初期化します。
+    GPUメモリに基づく設定調整は __post_init__ 内で自動的に実行されます。
     以降の呼び出しでは、同じインスタンスを返します。
 
     Returns:
         GlobalConfig: グローバル設定インスタンス
     """
     global _CONFIG
+    # Double-checked lockingパターンでスレッドセーフに初期化
     if _CONFIG is None:
-        _CONFIG = GlobalConfig()
-        # GPUメモリに基づく設定調整を実行（明示的な初期化）
-        _CONFIG.initialize_gpu_aware_defaults()
+        with _CONFIG_LOCK:
+            # ロック取得後に再度チェック（別スレッドが既に初期化した可能性があるため）
+            if _CONFIG is None:
+                _CONFIG = GlobalConfig()
+                # initialize_gpu_aware_defaults() は __post_init__ 内で既に呼び出されている
     return _CONFIG
 
 

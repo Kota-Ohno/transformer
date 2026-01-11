@@ -43,8 +43,8 @@ class DecoderLayer(nn.Module):
             output: 出力テンソル [batch_size, tgt_seq_len, d_model]
             new_cache: 更新されたキャッシュ情報
         """
-        # キャッシュの初期化
-        new_cache = {} if cache is None else copy.deepcopy(cache)
+        # キャッシュの初期化（テンソルをコピーせず、空のdictで初期化）
+        new_cache = {}
         cache = {} if cache is None else cache
 
         # 自己アテンション
@@ -162,15 +162,32 @@ class Decoder(nn.Module):
         # 位置エンコーディングのオフセットを計算
         # キャッシュが存在する場合、既に処理済みのトークン数を取得
         pos_offset = 0
-        if len(cache) > 0 and cache[0] is not None:
+        if cache and cache[0] is not None:
             # 最初のレイヤーのキャッシュから既に処理済みのシーケンス長を取得
             layer_cache = cache[0]
             if isinstance(layer_cache, dict) and 'self_k' in layer_cache:
                 cached_k = layer_cache['self_k']
-                if cached_k is not None and cached_k.dim() >= 4:
-                    # MultiHeadAttentionから返されるキャッシュの形状: [batch_size, num_heads, seq_len, d_k]
-                    # シーケンス長は次元2に格納されている
-                    pos_offset = cached_k.size(2)
+                if cached_k is not None:
+                    # cached_kがテンソルであることを確認
+                    if not isinstance(cached_k, torch.Tensor):
+                        raise TypeError(
+                            f"Expected cached_k to be a torch.Tensor, but got {type(cached_k).__name__}"
+                        )
+                    # MultiHeadAttentionから返されるキャッシュの形状:
+                    # 4D: [batch_size, num_heads, seq_len, d_k]
+                    # 3D: [batch_size, seq_len, d_k] (num_heads=1の場合など)
+                    dims = cached_k.dim()
+                    if dims == 4:
+                        # 4Dテンソルの場合、シーケンス長は次元2
+                        pos_offset = cached_k.size(2)
+                    elif dims == 3:
+                        # 3Dテンソルの場合、シーケンス長は次元1
+                        pos_offset = cached_k.size(1)
+                    else:
+                        raise ValueError(
+                            f"Unexpected cached_k dimensionality: expected 3D or 4D tensor, "
+                            f"but got {dims}D tensor with shape {cached_k.shape}"
+                        )
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x)

@@ -21,6 +21,9 @@ from utils.logging_config import setup_logging
 
 class Trainer:
     def __init__(self, model, train_loader, val_loader, optimizer, criterion, scheduler, scaler, device, args, input_vocab, output_vocab):
+        # ロギング設定を最初に実行（_setup_wandb()でログ出力が行われるため）
+        setup_logging()
+
         self.model = model
         self.train_loader = train_loader
         self.val_loader = val_loader
@@ -356,8 +359,7 @@ class Trainer:
         """
         トレーニングループを実行します。
         """
-        # ロギング設定（トレーニング開始前に一度だけ実行）
-        setup_logging()
+        # ロギング設定は __init__ で既に実行済み
         setup_checkpointing_directory()
 
         start_epoch = self._load_checkpoint_if_needed()
