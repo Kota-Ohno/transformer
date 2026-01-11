@@ -1,0 +1,4 @@
+# Exclude requirements files from final build context
+# These are copied separately before the full app/ directory
+app/requirements.txt
+app/requirements-gpu.txt

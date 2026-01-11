@@ -262,6 +262,8 @@ def _create_data_loaders(
             logging.warning(f"CUDAデバイスへのアクセスに失敗しました: {e}。CPUモードで続行します。")
 
     # データセットとデータローダーの作成
+    # 注意: 現在はオートエンコーダー設定（sourceとtargetが同じ）
+    # 翻訳タスクの場合は、別々のsource/targetトークン配列を用意する必要があります
     train_dataset = set_data(train_token_ids, train_token_ids)
     val_dataset = set_data(val_token_ids, val_token_ids)
 

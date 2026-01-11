@@ -45,6 +45,16 @@ class Trainer:
         self.last_valid_loss = None
         self.last_bleu = None
 
+        # 致命的エラー: 空のtrain_loaderを検証（リトライループの外で検証）
+        # これは回復不可能なエラーなので、リトライループで捕捉されないようにする
+        if train_loader is None or len(train_loader) == 0:
+            error_msg = (
+                "train_loaderが空です。データが読み込まれていないか、"
+                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+            )
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:
             self._setup_wandb()
@@ -176,10 +186,14 @@ class Trainer:
         epoch_loss = 0
         total_batches = len(self.train_loader)
 
+        # 注意: 空のtrain_loaderのチェックは__init__で既に実行済み
+        # ここではtotal_batchesが0になることはないはずだが、念のため確認
         if total_batches == 0:
-            raise ValueError(
-                "train_loaderが空です。データが読み込まれていないか、"
-                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+            # これは通常発生しないはず（__init__で検証済み）
+            # しかし、実行時にデータが削除された場合などに備えてエラーを発生
+            raise RuntimeError(
+                "train_loaderが空です。これは予期しない状態です。"
+                "データが実行中に削除された可能性があります。"
             )
 
         accumulation_steps = CONFIG.training_config.gradient_accumulation_steps

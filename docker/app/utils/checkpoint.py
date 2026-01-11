@@ -117,6 +117,22 @@ def save_checkpoint(
     """
     checkpoint_dir = setup_checkpointing_directory()
 
+    # 入力検証: best_valid_lossとbest_bleuがNoneの場合の処理
+    # 真の履歴ベストメトリクスを上書きしないよう、警告をログに記録してフォールバックを明示
+    if best_valid_loss is None:
+        logging.warning(
+            f"best_valid_lossがNoneです。現在のval_loss ({val_loss:.4f}) をフォールバックとして使用します。"
+            f"エポック {epoch} のチェックポイント保存時に、履歴ベストメトリクスが正しく保存されない可能性があります。"
+        )
+        best_valid_loss = val_loss
+
+    if best_bleu is None:
+        logging.warning(
+            f"best_bleuがNoneです。現在のbleu_score ({bleu_score:.4f}) をフォールバックとして使用します。"
+            f"エポック {epoch} のチェックポイント保存時に、履歴ベストメトリクスが正しく保存されない可能性があります。"
+        )
+        best_bleu = bleu_score
+
     # 現在の日付を取得
     current_date = datetime.now().strftime("%Y%m%d")
 
@@ -153,8 +169,9 @@ def save_checkpoint(
         'date': current_date,
         'model_config': model_config,  # モデル設定情報を追加
         # bestとlastを分離して保存
-        'best_valid_loss': best_valid_loss if best_valid_loss is not None else val_loss,
-        'best_bleu': best_bleu if best_bleu is not None else bleu_score,
+        # 注意: best_valid_lossとbest_bleuは関数の開始部分で検証済み（Noneの場合は警告ログとフォールバック処理済み）
+        'best_valid_loss': best_valid_loss,
+        'best_bleu': best_bleu,
         'last_valid_loss': last_valid_loss if last_valid_loss is not None else val_loss,
         'last_bleu': last_bleu if last_bleu is not None else bleu_score
     }

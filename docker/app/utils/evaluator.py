@@ -224,15 +224,6 @@ def decode_for_bleu(
         batch_size = 1
         seq_len = tgt_output.numel()
 
-    # 要素数の整合性を確認
-    total_elements = batch_size * seq_len
-    if tgt_output.numel() != total_elements:
-        raise ValueError(
-            f"tgt_outputの要素数 ({tgt_output.numel()}) が "
-            f"batch_size * seq_len ({total_elements}) と一致しません。"
-            f"形状: {tgt_output.shape}, batch_size: {batch_size}, seq_len: {seq_len}"
-        )
-
     # pred_tokensとtgt_outputの要素数が一致することを確認
     if pred_tokens.numel() != tgt_output.numel():
         raise ValueError(
