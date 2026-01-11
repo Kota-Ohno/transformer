@@ -78,7 +78,8 @@ class Encoder(nn.Module):
         """
         Args:
             x: 入力テンソル [batch_size, seq_len]
-            mask: パディングマスク [batch_size, 1, seq_len]
+            mask: パディングマスク [batch_size, 1, seq_len] または [batch_size, 1, 1, seq_len]。
+                  マスクは必要に応じてブロードキャストされます（EncoderLayer.forwardを参照）。
 
         Returns:
             出力テンソル [batch_size, seq_len, d_model]

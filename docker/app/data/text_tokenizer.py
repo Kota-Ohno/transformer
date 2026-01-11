@@ -169,7 +169,7 @@ class TextTokenizer:
         instance.sp_tgt_path = model_path_tgt
         return instance
 
-    def save_model(self, model_path: str, is_source: bool = True) -> None:
+    def save_model(self, model_path: str, is_source: bool = True, overwrite: bool = False) -> None:
         """SentencePieceモデルを指定されたパスに保存します。
 
         まず追跡されているパスからコピーを試み、それが存在しない場合は
@@ -180,6 +180,7 @@ class TextTokenizer:
                        拡張子がない場合は自動的に.modelが追加されます。
                        trainメソッドから呼び出される場合、.model拡張子付きのパスが渡されることがあります。
             is_source: Trueの場合はソースモデル、Falseの場合はターゲットモデルを保存
+            overwrite: Trueの場合、既存のファイルを上書きします。Falseの場合は既存ファイルがあるとスキップします。
 
         Raises:
             ValueError: モデルが初期化されていない場合
@@ -204,13 +205,20 @@ class TextTokenizer:
         if not model_path.endswith(".model"):
             model_path = f"{model_path}.model"
 
-        # 指定されたパスにファイルが既に存在する場合はコピーをスキップ
+        # 指定されたパスにファイルが既に存在する場合の処理
         if os.path.exists(model_path):
-            logger.info(
-                f"モデルファイルは既に存在します: {model_path} "
-                f"(is_source={is_source})。コピーをスキップします。"
-            )
-            return
+            if overwrite:
+                logger.info(
+                    f"モデルファイルは既に存在しますが、overwrite=Trueのため上書きします: {model_path} "
+                    f"(is_source={is_source})"
+                )
+                # 上書きする場合は処理を続行
+            else:
+                logger.info(
+                    f"モデルファイルは既に存在します: {model_path} "
+                    f"(is_source={is_source})。コピーをスキップします。"
+                )
+                return
 
         # 追跡されているパスからコピーを試みる
         if tracked_path and os.path.exists(tracked_path):

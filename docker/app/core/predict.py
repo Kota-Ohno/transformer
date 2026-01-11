@@ -52,12 +52,21 @@ def load_model(input_vocab: Dict[str, int], output_vocab: Dict[str, int], model_
             raise FileNotFoundError(f"指定されたモデルファイルが見つかりません: {model_path}")
         logging.info(f"指定されたモデルを使用します: {model_path}")
     else:
+        # modelsディレクトリのパスを解決（このスクリプトの位置から相対的に決定）
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        # docker/app/core/ から docker/app/ に移動して models/ を参照
+        app_dir = os.path.dirname(script_dir)
+        models_dir = os.path.join(app_dir, 'models')
+        # 環境変数またはCONFIGから上書き可能にする
+        models_dir = os.getenv('TRANSFORMER_MODELS_DIR', models_dir)
+        models_dir = os.path.abspath(models_dir)
+
         # modelsディレクトリから最新のモデルファイル名を取得
-        model_files = glob.glob('models/*.pth')
+        model_files = glob.glob(os.path.join(models_dir, '*.pth'))
         # 語彙ファイルを除外
         model_files = [f for f in model_files if not f.endswith(('vocab_input.pth', 'vocab_output.pth'))]
         if not model_files:
-            raise FileNotFoundError("学習済みモデルファイルが見つかりません。'models/' ディレクトリを確認してください。")
+            raise FileNotFoundError(f"学習済みモデルファイルが見つかりません。'{models_dir}' ディレクトリを確認してください。")
         model_path = max(model_files, key=os.path.getmtime)  # 最新のファイルを選択
         logging.info(f"最新のモデルを使用します: {model_path}")
 
@@ -144,7 +153,14 @@ def preprocess_input(sentence: str, input_vocab: Dict[str, int]) -> Optional[tor
     except KeyError as e:
         logging.error(f"エラー: 未知の単語が含まれています: {e}")
         # 未知の単語をUNKトークンに置き換える
-        return handle_unknown_tokens(sentence, input_vocab)
+        try:
+            return handle_unknown_tokens(sentence, input_vocab)
+        except ValueError as ve:
+            # handle_unknown_tokensがValueErrorを発生させた場合（<unk>トークンが存在しないなど）
+            logging.error(f"未知トークン処理中にエラーが発生しました: {ve}")
+            logging.error(f"入力文: {sentence}, 語彙に'<unk>'トークンが存在しない可能性があります")
+            # 安全なフォールバックとしてNoneを返す
+            return None
     except Exception as e:
         logging.error(f"予期せぬエラーが発生しました: {e}")
         return None

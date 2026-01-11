@@ -343,6 +343,16 @@ class DataAugmentor:
 
         # translate()メソッドの存在を確認
         has_translate = hasattr(model, "translate") and callable(getattr(model, "translate", None))
+        has_predict = hasattr(model, "predict") and callable(getattr(model, "predict", None))
+
+        if not has_translate and not has_predict:
+            error_msg = (
+                f"モデル {type(model).__name__} には 'translate()' メソッドも 'predict()' メソッドもありません。"
+                f"翻訳を実行できません。"
+            )
+            logging.error(error_msg)
+            raise AttributeError(error_msg)
+
         if not has_translate:
             logging.warning(
                 f"モデル {type(model).__name__} には 'translate()' メソッドがありません。"
@@ -412,8 +422,16 @@ class DataAugmentor:
             try:
                 if has_translate:
                     output_tensor = model.translate(batch_tensor)
-                else:
+                elif has_predict:
                     output_tensor = model.predict(batch_tensor)
+                else:
+                    # この時点で到達することはないはず（上でチェック済み）が、念のため
+                    error_msg = (
+                        f"モデル {type(model).__name__} には 'translate()' メソッドも 'predict()' メソッドもありません。"
+                        f"翻訳を実行できません。"
+                    )
+                    logging.error(error_msg)
+                    raise AttributeError(error_msg)
 
                 # 各アイテムごとに後処理
                 for batch_idx, orig_idx in enumerate(valid_indices):

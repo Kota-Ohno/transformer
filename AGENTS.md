@@ -242,11 +242,14 @@ markers =
 # プロジェクトルートから実行
 pytest
 
-# 特定のテストファイルを実行
+# 特定のテストファイルを実行（Pattern A: モジュールと同一ディレクトリ）
+pytest docker/app/models/test_encoder.py
+
+# 特定のテストファイルを実行（Pattern B: 専用のtestsディレクトリ）
 pytest docker/app/tests/test_example.py
 
-# カバレッジ付きで実行（オプション）
-pytest --cov=docker/app --cov-report=html
+# カバレッジ付きで実行（オプション、Pattern Aの例）
+pytest --cov=docker/app --cov-report=html docker/app/models/test_encoder.py
 ```
 
 #### Dockerコンテナ内での実行

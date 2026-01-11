@@ -43,10 +43,14 @@ def is_trusted_checkpoint_path(checkpoint_path: str) -> bool:
             return False
 
         # 信頼できるディレクトリのリスト（シンボリックリンクを解決）
-        trusted_dirs = [
-            Path("models/checkpoints").resolve(),
-            Path("models").resolve(),
-        ]
+        # strict=Falseで存在しないディレクトリでも例外を発生させない
+        trusted_dirs = []
+        checkpoints_dir = Path("models/checkpoints").resolve(strict=False)
+        models_dir = Path("models").resolve(strict=False)
+        if checkpoints_dir.exists() and checkpoints_dir.is_dir():
+            trusted_dirs.append(checkpoints_dir)
+        if models_dir.exists() and models_dir.is_dir():
+            trusted_dirs.append(models_dir)
 
         # チェックポイントファイルが信頼できるディレクトリ内にあるか確認
         for trusted_dir_obj in trusted_dirs:
@@ -114,6 +118,10 @@ def save_checkpoint(
         model_hidden_size: 実際に使用した隠れ層のサイズ
         model_num_heads: 実際に使用したアテンションヘッドの数
         model_num_layers: 実際に使用したレイヤー数
+        best_valid_loss: これまでの最良の検証損失（履歴ベストメトリクスの追跡用）
+        best_bleu: これまでの最良のBLEUスコア（履歴ベストメトリクスの追跡用）
+        last_valid_loss: 前回/最後のチェックポイントの検証損失（最近のパフォーマンス追跡用）
+        last_bleu: 前回/最後のチェックポイントのBLEUスコア（最近のパフォーマンス追跡用、最良モデル決定にも使用）
     """
     checkpoint_dir = setup_checkpointing_directory()
 
