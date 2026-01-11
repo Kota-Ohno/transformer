@@ -139,12 +139,8 @@ def _apply_fast_mode_settings(args: argparse.Namespace) -> None:
         # エポック数の制限
         if args.epochs > FAST_MODE_MAX_EPOCHS:
             args.epochs = FAST_MODE_MAX_EPOCHS
-        # 評価頻度の削減
-        CONFIG.training_config.max_eval_batches = FAST_MODE_MAX_EVAL_BATCHES
         # 勾配蓄積ステップ数の増加
         args.grad_accum_steps = max(args.grad_accum_steps, FAST_MODE_MIN_GRAD_ACCUM_STEPS)
-        # BLEUスコア計算用サンプル数の削減
-        CONFIG.training_config.bleu_sample_batches = FAST_MODE_BLEU_SAMPLE_BATCHES
 
 
 def _load_and_prepare_data(
@@ -568,6 +564,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     CONFIG.verbose_mask_logs = args.verbose_mask
     CONFIG.training_config.gradient_accumulation_steps = args.grad_accum_steps
     CONFIG.training_config.use_jit_compile = args.jit
+    # 高速モードの場合は評価設定を更新
+    if args.fast:
+        CONFIG.training_config.max_eval_batches = FAST_MODE_MAX_EVAL_BATCHES
+        CONFIG.training_config.bleu_sample_batches = FAST_MODE_BLEU_SAMPLE_BATCHES
 
     # データの読み込みと前処理
     train_token_ids, val_token_ids, input_vocab, output_vocab = _load_and_prepare_data(args)

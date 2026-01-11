@@ -27,25 +27,27 @@ def test_create_transformer_model():
         max_seq_length=max_seq_length
     )
 
-    assert model is not None
-    assert isinstance(model.encoder.embedding, torch.nn.Embedding)
-    assert model.encoder.embedding.num_embeddings == input_vocab_size
-    assert model.decoder.embedding.num_embeddings == output_vocab_size
-    assert model.encoder.d_model == hidden_size
-    assert len(model.encoder.layers) == num_layers
-    assert model.encoder.layers[0].self_attn.num_heads == num_heads
-    assert model.decoder.d_model == hidden_size
-    assert len(model.decoder.layers) == num_layers
-    assert model.decoder.layers[0].self_attn.num_heads == num_heads
+    # 動作ベースのテスト: forward passを実行して出力形状とdtypeを確認
+    batch_size = 4
+    src_seq_len = 20
+    tgt_seq_len = 15
 
-    # デコーダーのクロスアテンション（エンコーダ-デコーダアテンション）の確認
-    assert hasattr(model.decoder.layers[0], 'encoder_attn'), "Decoder layer should have encoder_attn (cross-attention)"
-    assert model.decoder.layers[0].encoder_attn.num_heads == num_heads, "Cross-attention num_heads should match"
+    src = torch.randint(0, input_vocab_size, (batch_size, src_seq_len))
+    tgt = torch.randint(0, output_vocab_size, (batch_size, tgt_seq_len))
 
-    # 埋め込み次元がhidden_sizeと一致することを確認
-    assert model.encoder.embedding.embedding_dim == hidden_size, "Encoder embedding_dim should match hidden_size"
-    assert model.decoder.embedding.embedding_dim == hidden_size, "Decoder embedding_dim should match hidden_size"
+    output, _ = model(src, tgt)
 
-    # フィードフォワード層のd_ffが正しく設定されていることを確認
-    assert model.encoder.layers[0].feed_forward.linear1.out_features == d_ff, "Encoder feed-forward d_ff should match"
-    assert model.decoder.layers[0].feed_forward.linear1.out_features == d_ff, "Decoder feed-forward d_ff should match"
+    # 出力形状の確認
+    assert output.shape == (batch_size, tgt_seq_len, output_vocab_size), \
+        f"Expected output shape ({batch_size}, {tgt_seq_len}, {output_vocab_size}), got {output.shape}"
+
+    # 出力dtypeの確認
+    assert output.dtype == torch.float32, \
+        f"Expected output dtype torch.float32, got {output.dtype}"
+
+    # 勾配計算の確認（オプション）
+    loss = output.sum()
+    loss.backward()
+    # 勾配が計算されていることを確認（少なくとも1つのパラメータに勾配がある）
+    has_grad = any(p.grad is not None for p in model.parameters() if p.requires_grad)
+    assert has_grad, "Gradients should be computed during backward pass"

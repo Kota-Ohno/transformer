@@ -255,15 +255,19 @@ class Trainer:
                 logging.info(f"チェックポイント {checkpoint_path} からモデルを復元しています...")
                 checkpoint_data = load_checkpoint(checkpoint_path, self.model, self.optimizer, self.scheduler)
                 start_epoch = checkpoint_data.get('epoch', 0) + 1
-                # 後方互換性のため、古いキー名もサポート
-                val_loss = checkpoint_data.get('val_loss', checkpoint_data.get('best_valid_loss', checkpoint_data.get('last_valid_loss', float('inf'))))
-                bleu_score = checkpoint_data.get('bleu_score', checkpoint_data.get('best_bleu', checkpoint_data.get('last_bleu', 0.0)))
-                self.best_valid_loss = val_loss
-                self.best_bleu = bleu_score
-                # 最新の検証済みメトリクスも復元（KeyboardInterrupt時のチェックポイント保存用）
-                self.last_valid_loss = val_loss
-                self.last_bleu = bleu_score
-                logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、検証損失 {val_loss:.4f}")
+                # bestとlastを分離して復元
+                self.best_valid_loss = checkpoint_data.get('best_valid_loss', float('inf'))
+                self.best_bleu = checkpoint_data.get('best_bleu', 0.0)
+                # 後方互換性のため、古いキー名（val_loss, bleu_score）もサポート
+                # 古いチェックポイントの場合は、best値がない場合にval_loss/bleu_scoreを使用
+                if self.best_valid_loss == float('inf'):
+                    self.best_valid_loss = checkpoint_data.get('val_loss', float('inf'))
+                if self.best_bleu == 0.0 and 'best_bleu' not in checkpoint_data:
+                    self.best_bleu = checkpoint_data.get('bleu_score', 0.0)
+                # last値の復元（存在しない場合はbest値を使用）
+                self.last_valid_loss = checkpoint_data.get('last_valid_loss', self.best_valid_loss)
+                self.last_bleu = checkpoint_data.get('last_bleu', self.best_bleu)
+                logging.info(f"チェックポイントから復元完了: エポック {start_epoch}、最良検証損失 {self.best_valid_loss:.4f}、最新検証損失 {self.last_valid_loss:.4f}")
             except Exception as e:
                 logging.exception(f"チェックポイントからの復元に失敗しました: {e}")
                 raise
@@ -408,7 +412,11 @@ class Trainer:
                             is_best=is_best,
                             model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                             model_num_heads=CONFIG.model_hyperparameters.num_heads,
-                            model_num_layers=CONFIG.model_hyperparameters.num_layers
+                            model_num_layers=CONFIG.model_hyperparameters.num_layers,
+                            best_valid_loss=self.best_valid_loss,
+                            best_bleu=self.best_bleu,
+                            last_valid_loss=self.last_valid_loss,
+                            last_bleu=self.last_bleu
                         )
                     else:
                         logging.info(f"チェックポイント保存をスキップしました (頻度: {save_checkpoint_frequency}エポックごと)")
@@ -453,7 +461,11 @@ class Trainer:
                         is_best=False,
                         model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                         model_num_heads=CONFIG.model_hyperparameters.num_heads,
-                        model_num_layers=CONFIG.model_hyperparameters.num_layers
+                        model_num_layers=CONFIG.model_hyperparameters.num_layers,
+                        best_valid_loss=self.best_valid_loss,
+                        best_bleu=self.best_bleu,
+                        last_valid_loss=self.last_valid_loss,
+                        last_bleu=self.last_bleu
                     )
                     epoch_completed = True
                     should_stop_training = True
@@ -494,7 +506,11 @@ class Trainer:
                                     is_best=False,
                                     model_hidden_size=CONFIG.model_hyperparameters.hidden_size,
                                     model_num_heads=CONFIG.model_hyperparameters.num_heads,
-                                    model_num_layers=CONFIG.model_hyperparameters.num_layers
+                                    model_num_layers=CONFIG.model_hyperparameters.num_layers,
+                                    best_valid_loss=self.best_valid_loss,
+                                    best_bleu=self.best_bleu,
+                                    last_valid_loss=self.last_valid_loss,
+                                    last_bleu=self.last_bleu
                                 )
                                 logging.info(f"OOMエラー後のチェックポイントを保存しました（エポック {epoch+1}）")
                             except Exception as checkpoint_error:

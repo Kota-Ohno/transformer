@@ -7,7 +7,6 @@ from data.data import train_sentencepiece
 
 # モジュールスコープのロガーを作成
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def _validate_and_filter_texts(
@@ -90,7 +89,14 @@ def train_and_load_sp_models(
 
     Raises:
         ValueError: 入力パラメータが無効な場合（None、空、または文字列のリストでない場合）
+        TypeError: save_path_srcまたはsave_path_tgtがNoneでもstrでもない場合
     """
+    # パスパラメータの型チェック
+    if save_path_src is not None and not isinstance(save_path_src, str):
+        raise TypeError(f"save_path_src must be a str or None, got {type(save_path_src).__name__}")
+    if save_path_tgt is not None and not isinstance(save_path_tgt, str):
+        raise TypeError(f"save_path_tgt must be a str or None, got {type(save_path_tgt).__name__}")
+
     # 入力検証
     train_texts_src = _validate_and_filter_texts(train_texts_src, "train_texts_src")
     train_texts_tgt = _validate_and_filter_texts(train_texts_tgt, "train_texts_tgt")

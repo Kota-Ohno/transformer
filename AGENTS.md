@@ -222,6 +222,18 @@ pytest
 - **テストファイルパターン**: `tests.py`, `test_*.py`, `*_test.py`
 - **Pythonパス**: `.`（カレントディレクトリ）
 
+以下は`pytest.ini`の設定例です：
+
+```ini
+[pytest]
+python_files = tests.py test_*.py *_test.py
+pythonpath = .
+addopts = -q --maxfail=1
+markers =
+    slow: marks tests as slow (deselect with '-m "not slow"')
+    integration: marks tests as integration tests
+```
+
 ### テストの実行方法
 
 #### ローカル環境での実行

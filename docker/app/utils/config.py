@@ -54,7 +54,7 @@ class ModelConfig:
 
         try:
             # 動的にGPUデバイスインデックスを取得
-            device_idx = torch.cuda.current_device() if torch.cuda.is_available() else 0
+            device_idx = torch.cuda.current_device()
             total_memory = torch.cuda.get_device_properties(device_idx).total_memory / (1024**3) # GB
         except (RuntimeError, AssertionError) as e:
             # GPU プロパティへのアクセスに失敗した場合はデフォルト設定にフォールバック

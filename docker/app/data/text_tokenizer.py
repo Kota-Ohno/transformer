@@ -58,6 +58,8 @@ class TextTokenizer:
         # モデルファイルのパスを追跡
         self.sp_src_path: Optional[str] = None
         self.sp_tgt_path: Optional[str] = None
+        # パディング警告ログのフラグ
+        self._pad_warning_logged: bool = False
 
     @classmethod
     def train(
@@ -72,8 +74,10 @@ class TextTokenizer:
         Args:
             train_texts_src: ソース言語のトレーニングテキスト（文字列またはリスト）
             train_texts_tgt: ターゲット言語のトレーニングテキスト（文字列またはリスト）
-            save_path_src: ソースモデルの保存パス（.model拡張子なし）。Noneの場合はデフォルトパスを使用。
-            save_path_tgt: ターゲットモデルの保存パス（.model拡張子なし）。Noneの場合はデフォルトパスを使用。
+            save_path_src: ソースモデルの保存パス（.model拡張子付きまたはなし、どちらでも可）。
+                          Noneの場合はデフォルトパスを使用。
+            save_path_tgt: ターゲットモデルの保存パス（.model拡張子付きまたはなし、どちらでも可）。
+                          Noneの場合はデフォルトパスを使用。
 
         Returns:
             TextTokenizer: 訓練されたモデルを持つTextTokenizerインスタンス
@@ -305,9 +309,11 @@ class TextTokenizer:
                     eos_id_value = model.eos_id()
                     if eos_id_value is not None and eos_id_value >= 0:
                         pad_id = eos_id_value
-                        logger.warning(
-                            "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
-                        )
+                        if not self._pad_warning_logged:
+                            logger.warning(
+                                "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
+                            )
+                            self._pad_warning_logged = True
 
             # それでも取得できなかった場合は専用のpadトークンを追加する必要がある
             # この場合はエラーを出すか、デフォルト値を使う（SentencePieceモデルの設定を確認）

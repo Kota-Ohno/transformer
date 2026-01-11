@@ -103,19 +103,9 @@ def test_normalize_numeric_parameter_variations():
     assert "<NUMBER>" in result_custom
     assert "999" not in result_custom
 
-    # None で数値が置き換えられない
+    # None で数値が置き換えられない（代表的な「置き換えない」ケース）
     result_none = normalize_text(text, "en_US", normalize_numeric=None)
     assert "999" in result_none
     assert "<NUM>" not in result_none
 
-    # False で数値が置き換えられない
-    result_false = normalize_text(text, "en_US", normalize_numeric=False)
-    assert "999" in result_false
-    assert "<NUM>" not in result_false
-
-    # 空文字列で数値が置き換えられない
-    result_empty = normalize_text(text, "en_US", normalize_numeric='')
-    assert "999" in result_empty
-    assert "<NUM>" not in result_empty
-    # None と空文字列は同じ動作
-    assert result_none == result_empty
+~

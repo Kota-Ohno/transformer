@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import copy
 from models.layers import PositionalEncoding, FeedForward
 from models.attention import MultiHeadAttention
 from utils.validation import validate_token_ids
@@ -43,7 +44,7 @@ class DecoderLayer(nn.Module):
             new_cache: 更新されたキャッシュ情報
         """
         # キャッシュの初期化
-        new_cache = {} if cache is None else cache.copy()
+        new_cache = {} if cache is None else copy.deepcopy(cache)
         cache = {} if cache is None else cache
 
         # 自己アテンション

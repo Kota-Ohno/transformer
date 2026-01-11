@@ -94,7 +94,11 @@ def save_checkpoint(
     is_best: bool = False,
     model_hidden_size: Optional[int] = None,
     model_num_heads: Optional[int] = None,
-    model_num_layers: Optional[int] = None
+    model_num_layers: Optional[int] = None,
+    best_valid_loss: Optional[float] = None,
+    best_bleu: Optional[float] = None,
+    last_valid_loss: Optional[float] = None,
+    last_bleu: Optional[float] = None
 ) -> None:
     """
     モデルのチェックポイントを保存します
@@ -144,10 +148,15 @@ def save_checkpoint(
         'model_state_dict': model.state_dict(),
         'optimizer_state_dict': optimizer.state_dict(),
         'scheduler_state_dict': scheduler.state_dict() if scheduler else None,
-        'val_loss': val_loss,
-        'bleu_score': bleu_score,
+        'val_loss': val_loss,  # 後方互換性のため保持
+        'bleu_score': bleu_score,  # 後方互換性のため保持
         'date': current_date,
-        'model_config': model_config  # モデル設定情報を追加
+        'model_config': model_config,  # モデル設定情報を追加
+        # bestとlastを分離して保存
+        'best_valid_loss': best_valid_loss if best_valid_loss is not None else val_loss,
+        'best_bleu': best_bleu if best_bleu is not None else bleu_score,
+        'last_valid_loss': last_valid_loss if last_valid_loss is not None else val_loss,
+        'last_bleu': last_bleu if last_bleu is not None else bleu_score
     }
 
     # 定期的なチェックポイントを保存

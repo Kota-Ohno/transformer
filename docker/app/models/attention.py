@@ -187,16 +187,18 @@ class MultiHeadAttention(nn.Module):
 def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
     """
     キャッシュサイズが指定された最大値を超えた場合に古いエントリを削除します。
+    元のキャッシュは変更せず、新しい辞書を返します。
 
     Args:
         cache (dict): 管理対象のキャッシュ辞書
-        max_entries (int): 許容される最大エントリ数
+        max_entries (int): 許容される最大エントリ数（デフォルト: MAX_CACHE_ENTRIES）
 
     Returns:
-        dict: サイズ調整後のキャッシュ
+        dict: サイズ調整後の新しいキャッシュ辞書（元のキャッシュは変更されません）
     """
     if len(cache) <= max_entries:
-        return cache
+        # 元のキャッシュを変更しないため、新しい辞書を作成して返す
+        return dict(cache)
 
     # 最も古いエントリを削除（ここではシンプルに最初のn個を削除）
     num_to_remove = len(cache) - max_entries
@@ -204,8 +206,7 @@ def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
     # キーのリストを取得
     keys = list(cache.keys())
 
-    # 最初のnum_to_remove個のキーを削除
-    for key in keys[:num_to_remove]:
-        del cache[key]
+    # 新しい辞書を作成（最初のnum_to_remove個のキーを除く）
+    new_cache = {key: cache[key] for key in keys[num_to_remove:]}
 
-    return cache
+    return new_cache
