@@ -2,7 +2,7 @@ import os
 import logging
 import sentencepiece as spm
 import re
-from typing import List, Union, Tuple, Optional
+from typing import List, Union, Tuple, Optional, Sequence
 from data.data import train_sentencepiece
 
 # モジュールスコープのロガーを作成
@@ -151,7 +151,7 @@ def train_and_load_sp_models(
     return sp_src, sp_tgt
 
 # テキスト正規化
-def normalize_text(text, lang, normalize_numeric='<NUM>'):
+def normalize_text(text: str, lang: str, normalize_numeric: str = '<NUM>') -> str:
     """
     基本的なテキスト正規化を行います
 
@@ -211,7 +211,12 @@ def normalize_text(text, lang, normalize_numeric='<NUM>'):
     return text.strip()
 
 # sentencepieceモデルを使ったトークナイズ
-def tokenize_with_sentencepiece(text, sp_model, lang=None, normalize_numeric='<NUM>'):
+def tokenize_with_sentencepiece(
+    text: str,
+    sp_model: spm.SentencePieceProcessor,
+    lang: Optional[str] = None,
+    normalize_numeric: str = '<NUM>'
+) -> List[int]:
     """
     sentencepieceモデルを使ってテキストをトークナイズします。
 

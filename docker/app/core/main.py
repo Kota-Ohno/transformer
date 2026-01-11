@@ -180,9 +180,12 @@ def non_negative_int(value: str) -> int:
         非負の整数値
 
     Raises:
-        argparse.ArgumentTypeError: 値が負の整数の場合
+        argparse.ArgumentTypeError: 値が整数でない場合、または負の整数の場合
     """
-    int_value = int(value)
+    try:
+        int_value = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"--limit-samples は整数である必要があります。指定された値: {value}")
     if int_value < 0:
         raise argparse.ArgumentTypeError(f"--limit-samples は0以上の整数である必要があります。指定された値: {int_value}")
     return int_value

@@ -7,7 +7,7 @@
 import os
 import argparse
 import time
-from typing import Callable, Any
+from typing import Callable
 from wcwidth import wcswidth
 
 def print_header(title: str, width: int | None = None) -> None:

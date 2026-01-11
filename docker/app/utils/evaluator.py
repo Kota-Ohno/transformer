@@ -49,7 +49,7 @@ def evaluate(
     all_hypotheses = []
 
     # BLEUスコア計算用の最小サンプル数
-    bleu_sample_batches = getattr(config, 'bleu_sample_batches', DEFAULT_BLEU_SAMPLE_BATCHES) if hasattr(config, 'bleu_sample_batches') else DEFAULT_BLEU_SAMPLE_BATCHES
+    bleu_sample_batches = getattr(config, 'bleu_sample_batches', DEFAULT_BLEU_SAMPLE_BATCHES)
     max_bleu_samples = min(bleu_sample_batches, len(valid_loader))
     bleu_sample_count = 0
 
@@ -59,26 +59,17 @@ def evaluate(
 
     # 最大シーケンス長（メモリ節約のため必要に応じて切り捨て）
     model_hyperparameters = getattr(config, 'model_hyperparameters', None)
-    if model_hyperparameters is not None:
-        max_length = getattr(model_hyperparameters, 'max_seq_length', 512)
-        if not hasattr(model_hyperparameters, 'max_seq_length'):
-            logging.warning(
-                "config.model_hyperparameters.max_seq_lengthが存在しません。"
-                "デフォルト値512を使用します。"
-            )
-    else:
-        max_length = 512
+    max_length = getattr(model_hyperparameters, 'max_seq_length', 512) if model_hyperparameters is not None else 512
+    if model_hyperparameters is None or not hasattr(model_hyperparameters, 'max_seq_length'):
         logging.warning(
-            "config.model_hyperparametersが存在しません。"
+            "config.model_hyperparametersが存在しないか、max_seq_length属性がありません。"
             "デフォルト値512を使用します。"
         )
 
     # 評価する最大バッチ数（性能向上のため削減）
-    requested_max = getattr(config.training_config, 'max_eval_batches', None) if hasattr(config, 'training_config') else None
-    if requested_max is not None:
-        max_batches = min(requested_max, len(valid_loader))
-    else:
-        max_batches = len(valid_loader)
+    training_cfg = getattr(config, 'training_config', None)
+    requested_max = getattr(training_cfg, 'max_eval_batches', None) if training_cfg is not None else None
+    max_batches = min(requested_max, len(valid_loader)) if requested_max is not None else len(valid_loader)
 
     logging.info(f"評価開始: {max_batches}バッチを評価、BLEUスコア用に最大{max_bleu_samples}バッチを使用")
 
