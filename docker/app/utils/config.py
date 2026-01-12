@@ -92,6 +92,24 @@ class ModelHyperparameters:
     max_seq_length: int = 512
     rel_pos_max_distance: int = 128
 
+    def __post_init__(self) -> None:
+        """
+        ハイパーパラメータのバリデーションを実行します。
+
+        Transformerモデルの制約として、hidden_sizeはnum_headsで割り切れる必要があります。
+        この制約を満たさない場合、モデル初期化時にエラーが発生するため、
+        設定段階で検証を行います。
+
+        Raises:
+            ValueError: hidden_sizeがnum_headsで割り切れない場合。
+                エラーメッセージにはhidden_sizeとnum_headsの値が含まれます。
+        """
+        if self.hidden_size % self.num_heads != 0:
+            raise ValueError(
+                f"Invalid ModelHyperparameters: hidden_size ({self.hidden_size}) must be divisible by "
+                f"num_heads ({self.num_heads}). This constraint is required for Transformer model initialization."
+            )
+
     @classmethod
     def from_model_config(cls, model_config: ModelConfig) -> "ModelHyperparameters":
         """ModelConfigからModelHyperparametersインスタンスを作成します。
