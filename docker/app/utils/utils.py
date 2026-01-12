@@ -54,9 +54,11 @@ def download_nltk_resources(
     if all_resources is None:
         all_resources = critical_resources
 
+    # エラーログの状態を追跡する変数（tryブロックの外で初期化）
+    download_error_logged = False
+
     try:
         # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
-        download_error_logged = False
         # カスタムダウンロードディレクトリを設定（Docker環境に依存しない場所）
         # 環境変数NLTK_DATA_DIRから読み取る、フォールバックとしてutils.pyのディレクトリ + "nltk_data"
         nltk_data_dir = os.environ.get(
@@ -236,6 +238,15 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
 
         # 単語を連結して文字列にして返す
         return ' '.join(words)
+    except (TypeError, AttributeError) as e:
+        # プログラミングエラーは再発生させる
+        logging.exception("テキスト変換エラー（プログラミングエラー）")
+        raise
+    except (ValueError, KeyError) as e:
+        # 予期される値エラーはログに記録して空文字列を返す
+        logging.exception("テキスト変換エラー（値エラー）")
+        return ""
     except Exception as e:
-        logging.error(f"テキスト変換エラー: {e}")
+        # その他の予期しないエラーはトレースバックをログに記録して空文字列を返す
+        logging.exception("テキスト変換エラー")
         return ""

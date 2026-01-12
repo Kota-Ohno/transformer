@@ -73,7 +73,7 @@ class Trainer:
                         dataset_len = len(self.train_loader.dataset)
                         num_batches = len(self.train_loader)
                         if num_batches > 0:
-                            batch_size = (dataset_len + num_batches - 1) // num_batches
+                            batch_size = dataset_len // num_batches
                         else:
                             batch_size = 1
                     else:

@@ -61,6 +61,22 @@ else
     elif [ -z "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -n "$TRANSFORMER_DEVICE" ]; then
         export TRANSFORMER_GLOBAL_DEVICE="$TRANSFORMER_DEVICE"
     fi
+
+    # デバイス値の検証（後方互換性のコピー後に行う）
+    validate_device_value() {
+        local value="$1"
+        local var_name="$2"
+        if [ -n "$value" ]; then
+            # "cpu"、"cuda"、または"cuda:N"（Nは非負の整数）の形式をチェック
+            if ! echo "$value" | grep -qE '^(cpu|cuda(:[0-9]+)?)$'; then
+                echo "ERROR: Invalid value for $var_name: '$value'. Allowed values are 'cpu', 'cuda', or 'cuda:N' (where N is a non-negative integer)." >&2
+                exit 1
+            fi
+        fi
+    }
+
+    validate_device_value "$TRANSFORMER_GLOBAL_DEVICE" "TRANSFORMER_GLOBAL_DEVICE"
+    validate_device_value "$TRANSFORMER_DEVICE" "TRANSFORMER_DEVICE"
 fi
 
 # アプリケーションを実行

@@ -545,8 +545,19 @@ class DataAugmentor:
                                 output_ids.append(token_id)
 
                         # IDをトークンに変換
-                        output_tokens = tgt_tokenizer.decode_ids(output_ids)
-                        result[orig_idx] = output_tokens
+                        try:
+                            if hasattr(tgt_tokenizer, 'decode_ids') and callable(tgt_tokenizer.decode_ids):
+                                output_tokens = tgt_tokenizer.decode_ids(output_ids)
+                            elif hasattr(tgt_tokenizer, 'decode') and callable(tgt_tokenizer.decode):
+                                # decode_idsが存在しない場合はdecodeを使用
+                                output_tokens = tgt_tokenizer.decode(output_ids)
+                            else:
+                                # どちらも存在しない場合はトークンを結合
+                                output_tokens = ' '.join(str(token_id) for token_id in output_ids)
+                            result[orig_idx] = output_tokens
+                        except (AttributeError, TypeError) as e:
+                            logging.error(f"出力処理中にエラーが発生しました（デコードメソッドの問題）: {e}")
+                            result[orig_idx] = texts[orig_idx]  # エラー時は元のテキストを使用
                     except Exception as e:
                         logging.error(f"出力処理中にエラーが発生しました: {e}")
                         result[orig_idx] = texts[orig_idx]  # エラー時は元のテキストを使用
