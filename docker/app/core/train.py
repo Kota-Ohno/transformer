@@ -443,6 +443,8 @@ def _initialize_model(
                 dynamo.config.output_code = True
 
             # torch.compile呼び出しをラップしてエラーを確実にキャッチ
+            # optimized_modelを初期化して、例外が発生しても常に定義されるようにする
+            optimized_model = model
             try:
                 optimized_model = torch.compile(
                     model,
@@ -461,7 +463,8 @@ def _initialize_model(
                 if not suppress_errors:
                     raise
                 # suppress_errorsがTrueの場合は通常のモデルを使用するために例外を抑制
-                # 外側のtry-exceptで通常のモデルにフォールバックするため、例外を再発生しない
+                # optimized_modelは既にmodelに初期化されているので、そのまま使用
+                optimized_model = model
 
             try:
                 logging.info("JITコンパイルのウォームアップ実行...")
@@ -624,6 +627,14 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # トレーニングコンポーネントの設定
     optimizer, criterion, scheduler, scaler = _setup_training_components(model, args, train_loader, device)
+
+    # チェックポイントの読み込み設定を確認
+    if args.resume:
+        logging.info("--resumeオプションが指定されました。最新のチェックポイントから再開します。")
+    if args.checkpoint:
+        logging.info(f"--checkpointオプションが指定されました。チェックポイント '{args.checkpoint}' から再開します。")
+        if not os.path.exists(args.checkpoint):
+            logging.warning(f"指定されたチェックポイントファイルが見つかりません: {args.checkpoint}")
 
     # Trainerクラスのインスタンスを作成し、トレーニングを開始
     trainer = Trainer(

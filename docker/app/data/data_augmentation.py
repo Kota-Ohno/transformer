@@ -637,7 +637,7 @@ class DataAugmentor:
                 logging.error(f"{technique}拡張適用中にエラーが発生しました: {e}", exc_info=True)
 
                 # エラーが多すぎる場合は警告
-                if error_count > MAX_DATA_AUGMENTATION_ERRORS:
+                if error_count >= MAX_DATA_AUGMENTATION_ERRORS:
                     logging.warning(f"エラーが{MAX_DATA_AUGMENTATION_ERRORS}回以上発生しました。データ拡張プロセスに問題がある可能性があります。")
                     break
 
