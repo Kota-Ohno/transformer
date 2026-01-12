@@ -190,18 +190,27 @@ def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Opti
     データセットまたはトークンIDのリストからデータローダーを作成
 
     Args:
-        dataset_or_data: データセットインスタンスまたはトークンIDのリスト
+        dataset_or_data: データセットインスタンスまたはトークンIDのリスト。
+            リストが渡された場合、X=Y（オートエンコーダー）として扱われます。
+            入力と出力を分けたい場合は、MyDatasetインスタンスを直接渡すか、
+            (X, Y)タプルのリストを渡してください。
         batch_size: バッチサイズ
         pad_token_id: パディングに使用するトークンID（Noneの場合はデフォルトの0を使用）
         shuffle: データをシャッフルするかどうか（デフォルト: True）
 
     Returns:
         DataLoader: バッチ処理を行うデータローダー
+
+    Warning:
+        プレーンなリスト（list）が渡された場合、set_data(dataset_or_data, dataset_or_data)
+        が呼び出され、X=Yとして扱われます（オートエンコーダー動作）。
+        入力と出力を分けたい場合は、MyDatasetインスタンスを直接作成して渡してください。
     """
     # トークンIDのリストを受け取った場合、データセットに変換
     if isinstance(dataset_or_data, list):
         # 入力と出力を同じにする（オートエンコーダーのようなアプローチ）
-        # 実際のアプリケーションでは、入力と出力を適切に分ける必要がある
+        # 警告: この動作は暗黙的です。入力と出力を分けたい場合は、
+        # MyDatasetインスタンスを直接作成して渡してください。
         dataset = set_data(dataset_or_data, dataset_or_data)
     else:
         # すでにデータセットインスタンスの場合はそのまま使用

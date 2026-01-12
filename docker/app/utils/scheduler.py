@@ -54,13 +54,19 @@ class WarmupScheduler(_BaseScheduler):
                 lrs.append(lr_i)
             return lrs
         else:
+            # warmup終了時のLRを計算（不連続性を避けるため）
+            # step == warmup_steps のときのscale: (d_model * warmup_steps) ** -0.5
+            warmup_end_scale = (self.d_model * self.warmup_steps) ** -0.5
+
             # warmup_steps < total_steps は既に検証済みなので、常にこの計算を実行
             progress = (step - self.warmup_steps) / (self.total_steps - self.warmup_steps)
             progress = min(max(progress, 0.0), 1.0)
             # コサイン減衰を適用（各パラメータグループごとに計算）
+            # warmup終了時のLRを開始値として使用
             lrs = []
             for base_lr in self.base_lrs:
+                warmup_end_lr = base_lr * warmup_end_scale
                 cos_value = math.cos(progress * math.pi)
-                lr = self.min_lr + 0.5 * (base_lr - self.min_lr) * (1 + cos_value)
+                lr = self.min_lr + 0.5 * (warmup_end_lr - self.min_lr) * (1 + cos_value)
                 lrs.append(max(self.min_lr, lr))
             return lrs

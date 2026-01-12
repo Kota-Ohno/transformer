@@ -67,7 +67,6 @@ class MultiHeadAttention(nn.Module):
         self.wo = nn.Linear(d_model, d_model)
 
         self.attention = ScaledDotProductAttention(dropout)
-        self.dropout = nn.Dropout(dropout)
 
     def split_heads(self, x):
         """入力テンソルをヘッドに分割"""

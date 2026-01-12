@@ -189,12 +189,15 @@ def calculate_loss(
     predictions_flat = predictions.view(-1, vocab_size)
     targets_flat = targets.view(-1)
 
+    # ignore_indexを正規化（Noneの場合は-100に設定）
+    ignore_idx = -100 if ignore_index is None else ignore_index
+
     # クロスエントロピー損失を計算
     import torch.nn.functional as F
     loss = F.cross_entropy(
         predictions_flat,
         targets_flat,
-        ignore_index=ignore_index,
+        ignore_index=ignore_idx,
         reduction=reduction
     )
 

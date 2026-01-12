@@ -1,4 +1,11 @@
-# Exclude requirements files from final build context
-# These are copied separately before the full app/ directory
-app/requirements.txt
-app/requirements-gpu.txt
+# Exclude common build artifacts and caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.pytest_cache/
+.git/
+.gitignore
+tests/
+*.log
