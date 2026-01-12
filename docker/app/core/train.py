@@ -414,23 +414,55 @@ def _initialize_model(
             # デバッグモードでない場合はエラー抑制を有効化（本番環境でエラーを非表示にする）
             suppress_errors = not CONFIG.training_config.debug_mode
             torch._dynamo.config.suppress_errors = suppress_errors
+
+            # suppress_errorsがTrueの場合でもエラーをログに記録するためのハンドラーを設定
             if suppress_errors:
                 logging.warning(
                     "torch._dynamo.config.suppress_errorsがTrueに設定されています。"
-                    "JITコンパイルエラーが非表示になる可能性があります。"
+                    "JITコンパイルエラーはログに記録されますが、例外は抑制されます。"
                 )
+                # エラーハンドラーを設定してエラーをログに記録
+                original_error_handler = getattr(torch._dynamo.config, 'error_handler', None)
+                def error_handler(error: Exception) -> None:
+                    """JITコンパイルエラーをログに記録するハンドラー"""
+                    import traceback
+                    logging.error(
+                        f"JITコンパイルエラーが発生しました（suppress_errors=Trueのため例外は抑制されます）: {error}",
+                        exc_info=True
+                    )
+                    if original_error_handler is not None:
+                        original_error_handler(error)
+                # error_handler属性が存在する場合のみ設定
+                if hasattr(torch._dynamo.config, 'error_handler'):
+                    torch._dynamo.config.error_handler = error_handler
+
             torch._dynamo.config.cache_size_limit = 64
 
             if CONFIG.training_config.debug_mode:
                 dynamo.config.debug = True
                 dynamo.config.output_code = True
 
-            optimized_model = torch.compile(
-                model,
-                backend="inductor",
-                mode="max-autotune",
-                fullgraph=False
-            )
+            # torch.compile呼び出しをラップしてエラーを確実にキャッチ
+            try:
+                optimized_model = torch.compile(
+                    model,
+                    backend="inductor",
+                    mode="max-autotune",
+                    fullgraph=False
+                )
+            except Exception as compile_error:
+                # suppress_errorsがTrueでもエラーをログに記録
+                import traceback
+                logging.error(
+                    f"torch.compile呼び出し中にエラーが発生しました: {compile_error}\n"
+                    f"完全なトレースバック:\n{traceback.format_exc()}"
+                )
+                # suppress_errorsがFalseの場合は例外を再発生
+                if not suppress_errors:
+                    raise
+                # suppress_errorsがTrueの場合は通常のモデルを使用するために例外を抑制
+                # 外側のtry-exceptで通常のモデルにフォールバックするため、例外を再発生
+                raise
 
             try:
                 logging.info("JITコンパイルのウォームアップ実行...")

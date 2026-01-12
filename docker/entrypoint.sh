@@ -39,7 +39,15 @@ if [ -z "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -z "$TRANSFORMER_DEVICE" ]; then
         fi
     fi
 else
-    echo "Device settings detected from environment variables: TRANSFORMER_GLOBAL_DEVICE=$TRANSFORMER_GLOBAL_DEVICE, TRANSFORMER_DEVICE=$TRANSFORMER_DEVICE" >&2
+    # 設定されている環境変数のみを動的に構築して表示
+    log_message="Device settings detected from environment variables:"
+    if [ -n "$TRANSFORMER_GLOBAL_DEVICE" ]; then
+        log_message="$log_message TRANSFORMER_GLOBAL_DEVICE=$TRANSFORMER_GLOBAL_DEVICE"
+    fi
+    if [ -n "$TRANSFORMER_DEVICE" ]; then
+        log_message="$log_message TRANSFORMER_DEVICE=$TRANSFORMER_DEVICE"
+    fi
+    echo "$log_message" >&2
     # 両方が設定されていて異なる値の場合はエラー
     if [ -n "$TRANSFORMER_GLOBAL_DEVICE" ] && [ -n "$TRANSFORMER_DEVICE" ]; then
         if [ "$TRANSFORMER_GLOBAL_DEVICE" != "$TRANSFORMER_DEVICE" ]; then

@@ -70,6 +70,7 @@ def download_nltk_resources(
             nltk.data.path.insert(0, nltk_data_dir)
 
         # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
+        download_error_logged = False
         for resource in all_resources:
             try:
                 logging.info(f"nltk resource {resource} をダウンロードしています...")
@@ -77,18 +78,28 @@ def download_nltk_resources(
                 logging.info(f"nltk resource {resource} のダウンロードが完了しました")
             except Exception as e:
                 exception_traceback = traceback.format_exc()
-                logging.warning(
-                    f"nltk resource '{resource}' のダウンロードに失敗しました: {e}\n"
-                    f"完全な例外情報:\n{exception_traceback}"
-                )
                 if resource in critical_resources:
+                    # クリティカルリソースの場合はエラーレベルでログに記録
+                    logging.error(
+                        f"クリティカルなnltk resource '{resource}' のダウンロードに失敗しました: {e}\n"
+                        f"完全な例外情報:\n{exception_traceback}"
+                    )
+                    download_error_logged = True
                     raise
+                else:
+                    # 非クリティカルリソースの場合は警告レベルでログに記録
+                    logging.warning(
+                        f"nltk resource '{resource}' のダウンロードに失敗しました: {e}\n"
+                        f"完全な例外情報:\n{exception_traceback}"
+                    )
     except Exception as e:
-        exception_traceback = traceback.format_exc()
-        logging.error(
-            f"NLTKリソースのダウンロード処理中に予期しないエラーが発生しました: {e}\n"
-            f"完全な例外情報:\n{exception_traceback}"
-        )
+        # 既にログに記録されている場合は重複ログを避ける
+        if not download_error_logged:
+            exception_traceback = traceback.format_exc()
+            logging.error(
+                f"NLTKリソースのダウンロード処理中に予期しないエラーが発生しました: {e}\n"
+                f"完全な例外情報:\n{exception_traceback}"
+            )
         raise
 
 # --- マスク生成関数 ---

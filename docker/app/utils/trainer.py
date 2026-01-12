@@ -507,6 +507,7 @@ class Trainer:
 
                     # 回復可能なエラーかどうかを判定
                     if self._is_recoverable_error(e):
+                        # リトライ試行回数を即座にインクリメント
                         retry_attempt += 1
                         if retry_attempt >= self.max_epoch_retries:
                             # リトライ回数が尽きた場合: チェックポイントを保存してから停止

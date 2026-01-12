@@ -259,7 +259,7 @@ torchrun --nproc_per_node=4 train.py [その他のオプション]
 
 ## エラー解決
 
--   **NVIDIA Container Toolkit の問題:** NVIDIAの公式ドキュメントを参照してください: [https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+-   **NVIDIA Container Toolkit の問題:** NVIDIAの公式ドキュメントを参照してください: [https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) (verified 2026-01-12)
 -   **モデル読み込みエラー:** 学習時と推論時でモデル設定が一致していることを確認してください。GPUメモリによる自動調整で層数が変わっている可能性もあります。
 -   **その他のエラー:** 詳細なエラーログがコンソールに出力されます。データの読み込みに関する一部のエラーは自動的にリトライされ、バッチ処理中のエラーはスキップされて処理が続行される場合があります。
 
