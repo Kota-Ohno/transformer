@@ -397,7 +397,16 @@ class GlobalConfig:
                 elif isinstance(value, bool):
                     return value, True
                 elif isinstance(value, (int, float)):
-                    return bool(value), True
+                    # 0と1のみを受け入れる（0.0と1.0も含む）
+                    if value == 0 or value == 0.0:
+                        return False, True
+                    elif value == 1 or value == 1.0:
+                        return True, True
+                    else:
+                        raise ValueError(
+                            f"Invalid numeric boolean value '{value}'. "
+                            f"Expected 0 or 1 (or 0.0 or 1.0), but got {value}"
+                        )
                 else:
                     raise ValueError(f"Cannot convert {type(value).__name__} to bool")
 

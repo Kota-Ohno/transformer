@@ -96,8 +96,8 @@ docker ps --format '{{.Names}}'
    `docker-compose.yml` の `volumes` セクションに以下を追加することで、データディレクトリをマウントできます:
    ```yaml
    volumes:
-     - ./app:/src/
-     - ./data:/src/data  # データディレクトリをマウント
+     - ./docker/app:/src/
+     - ./docker/app/data:/src/data  # データディレクトリをマウント
    ```
 
 **ディスク容量の目安:**

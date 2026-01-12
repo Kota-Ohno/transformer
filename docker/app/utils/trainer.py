@@ -399,7 +399,9 @@ class Trainer:
             epoch_completed = False
 
             # エポック処理をリトライ可能なループで囲む
-            while retry_attempt <= self.max_epoch_retries and not epoch_completed:
+            # max_epoch_retriesは最大試行回数（例: 3なら最大3回試行）
+            # retry_attemptは0から始まり、各リトライでインクリメントされる
+            while retry_attempt < self.max_epoch_retries and not epoch_completed:
                 try:
                     last_epoch = epoch + 1
                     valid_loss, bleu_score = self._process_epoch(epoch)

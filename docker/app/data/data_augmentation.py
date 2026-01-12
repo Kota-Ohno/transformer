@@ -18,6 +18,72 @@ from data.tokenizer_utils import train_and_load_sp_models
 # ロギング設定
 setup_logging()
 
+
+def normalize_lang_code(lang_code: str) -> str:
+    """言語コードを正規化する。
+
+    Args:
+        lang_code: 正規化する言語コード（例: "ja", "jpn", "ja_JP", "JA"）
+
+    Returns:
+        正規化された言語コード（小文字、アンダースコア区切り）
+    """
+    if not lang_code:
+        return lang_code
+
+    # 小文字に変換してトリム
+    normalized = lang_code.strip().lower()
+
+    # 言語コードのエイリアスマッピング
+    lang_aliases = {
+        # 日本語のエイリアス
+        "ja": "ja",
+        "jpn": "ja",
+        "japanese": "ja",
+        "ja_jp": "ja",
+        "ja-jp": "ja",
+        # 英語のエイリアス
+        "en": "en",
+        "eng": "en",
+        "english": "en",
+        "en_us": "en",
+        "en-us": "en",
+        "en_gb": "en",
+        "en-gb": "en",
+    }
+
+    # エイリアスをチェック
+    if normalized in lang_aliases:
+        return lang_aliases[normalized]
+
+    # エイリアスにない場合は、アンダースコアやハイフンで分割して最初の部分を返す
+    # 例: "ja_JP" -> "ja", "en-US" -> "en"
+    parts = normalized.replace("-", "_").split("_")
+    base_lang = parts[0] if parts else normalized
+
+    # ベース言語がエイリアスにある場合はそれを使用
+    if base_lang in lang_aliases:
+        return lang_aliases[base_lang]
+
+    # それでも見つからない場合は正規化された値を返す
+    return normalized
+
+
+def resolve_lang_alias(lang_code: str, canonical_source: str) -> bool:
+    """言語コードが正規化されたソース言語と一致するかチェックする。
+
+    Args:
+        lang_code: チェックする言語コード
+        canonical_source: 正規化されたソース言語コード（例: "ja"）
+
+    Returns:
+        言語コードがソース言語と一致する場合True
+    """
+    normalized_lang = normalize_lang_code(lang_code)
+    normalized_source = normalize_lang_code(canonical_source)
+    return normalized_lang == normalized_source
+
+
 class DataAugmentor:
     """データ拡張を行うクラス"""
 
@@ -359,9 +425,9 @@ class DataAugmentor:
                 f"'predict()' メソッドを使用してフォールバックします。"
             )
 
-        # 使用するトークナイザーを決定
-        src_tokenizer = self.sp_src if src_lang == CONFIG.data_config.translation_source else self.sp_tgt
-        tgt_tokenizer = self.sp_src if tgt_lang == CONFIG.data_config.translation_source else self.sp_tgt
+        # 使用するトークナイザーを決定（言語コードを正規化して比較）
+        src_tokenizer = self.sp_src if resolve_lang_alias(src_lang, CONFIG.data_config.translation_source) else self.sp_tgt
+        tgt_tokenizer = self.sp_src if resolve_lang_alias(tgt_lang, CONFIG.data_config.translation_source) else self.sp_tgt
 
         # パディングIDを取得
         try:

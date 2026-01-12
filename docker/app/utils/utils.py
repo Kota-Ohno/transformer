@@ -191,14 +191,19 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
                 # 1次元テンソル: そのままリストに変換
                 ids = ids.cpu().tolist()
             elif ids.ndim == 2:
-                # 2次元テンソル: バッチ構造を保持してリストのリストに変換
-                ids = ids.cpu().tolist()
+                # 2次元テンソル: フラット化して1次元リストに変換
+                # バッチ構造は保持せず、すべてのトークンIDを1つのリストにまとめる
+                ids_2d = ids.cpu().tolist()
+                ids = [token_id for batch in ids_2d for token_id in batch]
             else:
                 # 3次元以上のテンソル: 予期しない次元数
                 raise ValueError(
                     f"予期しないテンソルの次元数: {ids.ndim}。"
                     f"1次元（単一シーケンス）または2次元（バッチ）のみサポートされています。"
                 )
+        elif isinstance(ids, list) and len(ids) > 0 and isinstance(ids[0], list):
+            # リストのリスト（2D構造）の場合もフラット化
+            ids = [token_id for batch in ids for token_id in batch]
 
         # IDから単語に変換
         words = []
