@@ -7,6 +7,7 @@ from tqdm import tqdm
 import os
 import traceback
 from datetime import datetime
+import itertools
 
 from typing import Optional, Dict, Any, Tuple
 from utils.config import CONFIG
@@ -25,7 +26,6 @@ class Trainer:
         setup_logging()
 
         self.model = model
-        self.train_loader = train_loader
         self.val_loader = val_loader
         self.optimizer = optimizer
         self.criterion = criterion
@@ -66,12 +66,17 @@ class Trainer:
                     )
                     logging.error(error_msg)
                     raise ValueError(error_msg)
+                # 通常のDatasetの場合、そのまま使用
+                self.train_loader = train_loader
             else:
                 # __len__メソッドが存在しない場合（IterableDataset）
                 # イテレータを作成して空かどうかをチェック
+                # 最初のバッチを消費しないように、キャプチャして復元する
                 iterator = iter(train_loader)
                 try:
-                    next(iterator)
+                    first_batch = next(iterator)
+                    # 最初のバッチを復元したイテラブルを作成してself.train_loaderに保存
+                    self.train_loader = itertools.chain([first_batch], iterator)
                 except StopIteration:
                     error_msg = (
                         "train_loaderが空です。データが読み込まれていないか、"
@@ -217,11 +222,17 @@ class Trainer:
     def _train_epoch(self):
         self.model.train()
         epoch_loss = 0
-        total_batches = len(self.train_loader)
+
+        # IterableDatasetの場合、len()がTypeErrorを発生させる可能性がある
+        try:
+            total_batches = len(self.train_loader)
+        except (TypeError, AttributeError):
+            # __len__が存在しない場合（IterableDataset）
+            total_batches = None
 
         # 注意: 空のtrain_loaderのチェックは__init__で既に実行済み
         # ここではtotal_batchesが0になることはないはずだが、念のため確認
-        if total_batches == 0:
+        if total_batches is not None and total_batches == 0:
             # これは通常発生しないはず（__init__で検証済み）
             # しかし、実行時にデータが削除された場合などに備えてエラーを発生
             raise RuntimeError(
@@ -233,7 +244,11 @@ class Trainer:
 
         pbar = tqdm(enumerate(self.train_loader), total=total_batches, desc="Training")
 
+        # IterableDatasetの場合、バッチ数をカウントする
+        batch_count = 0
+
         for i, batch in pbar:
+            batch_count += 1
             src, tgt_input, tgt_output = batch
 
             src = src.to(self.device, non_blocking=True)
@@ -256,7 +271,9 @@ class Trainer:
             if self.scaler is not None:
                 self.scaler.scale(loss).backward()
 
-                if (i + 1) % accumulation_steps == 0 or (i + 1) == total_batches:
+                # total_batchesがNoneの場合、最後のバッチかどうかを判定できないため、
+                # 累積ステップの条件のみで判定する
+                if (i + 1) % accumulation_steps == 0 or (total_batches is not None and (i + 1) == total_batches):
                     self.scaler.unscale_(self.optimizer)
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
                     self.scaler.step(self.optimizer)
@@ -268,7 +285,9 @@ class Trainer:
                 # CPU環境またはGradScalerが利用できない場合
                 loss.backward()
 
-                if (i + 1) % accumulation_steps == 0 or (i + 1) == total_batches:
+                # total_batchesがNoneの場合、最後のバッチかどうかを判定できないため、
+                # 累積ステップの条件のみで判定する
+                if (i + 1) % accumulation_steps == 0 or (total_batches is not None and (i + 1) == total_batches):
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
                     self.optimizer.step()
                     if hasattr(self, "scheduler") and self.scheduler is not None:
@@ -283,7 +302,13 @@ class Trainer:
                 "lr": f"{current_lr:.6f}"
             })
 
-        return epoch_loss / total_batches
+        # total_batchesがNoneの場合、ループ内でカウントしたバッチ数を使用
+        actual_batch_count = total_batches if total_batches is not None else batch_count
+        if actual_batch_count > 0:
+            return epoch_loss / actual_batch_count
+        else:
+            # バッチ数が0の場合（通常は発生しない）
+            return 0.0
 
     def _load_checkpoint_if_needed(self) -> int:
         """
