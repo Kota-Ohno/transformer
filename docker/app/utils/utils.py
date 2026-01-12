@@ -185,9 +185,13 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
     """
     _maybe_log_constants_import_failure()
     try:
-        # テンソルの場合はリストに変換
+        # テンソルの場合はリストに変換（2次元以上の場合はフラット化）
         if isinstance(ids, torch.Tensor):
-            ids = ids.cpu().tolist()
+            # 2次元以上のテンソルの場合はフラット化してからリストに変換
+            if ids.ndim >= 2:
+                ids = ids.flatten().cpu().tolist()
+            else:
+                ids = ids.cpu().tolist()
 
         # IDから単語に変換
         words = []

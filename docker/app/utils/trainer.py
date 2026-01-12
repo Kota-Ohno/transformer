@@ -273,13 +273,16 @@ class Trainer:
                 checkpoint_data = load_checkpoint(checkpoint_path, self.model, self.optimizer, self.scheduler)
                 start_epoch = checkpoint_data.get('epoch', 0) + 1
                 # bestとlastを分離して復元
-                self.best_valid_loss = checkpoint_data.get('best_valid_loss', float('inf'))
-                self.best_bleu = checkpoint_data.get('best_bleu', 0.0)
-                # 後方互換性のため、古いキー名（val_loss, bleu_score）もサポート
-                # 古いチェックポイントの場合は、best値がない場合にval_loss/bleu_scoreを使用
-                if self.best_valid_loss == float('inf'):
+                # 新しいキーが存在する場合は優先、存在しない場合は古いキーにフォールバック
+                if 'best_valid_loss' in checkpoint_data:
+                    self.best_valid_loss = checkpoint_data['best_valid_loss']
+                else:
+                    # 後方互換性のため、古いキー名（val_loss）を使用
                     self.best_valid_loss = checkpoint_data.get('val_loss', float('inf'))
-                if self.best_bleu == 0.0 and 'best_bleu' not in checkpoint_data:
+                if 'best_bleu' in checkpoint_data:
+                    self.best_bleu = checkpoint_data['best_bleu']
+                else:
+                    # 後方互換性のため、古いキー名（bleu_score）を使用
                     self.best_bleu = checkpoint_data.get('bleu_score', 0.0)
                 # last値の復元（存在しない場合はbest値を使用）
                 self.last_valid_loss = checkpoint_data.get('last_valid_loss', self.best_valid_loss)

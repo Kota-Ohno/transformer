@@ -153,9 +153,15 @@ def save_checkpoint(
     else:
         num_layers = CONFIG.model_hyperparameters.num_layers
 
-    # 引数で渡された値があれば優先して使用
-    hidden_size = model_hidden_size or CONFIG.model_hyperparameters.hidden_size
-    num_heads = model_num_heads or CONFIG.model_hyperparameters.num_heads
+    # 引数で渡された値があれば優先して使用（Noneを明示的にチェック）
+    if model_hidden_size is not None:
+        hidden_size = model_hidden_size
+    else:
+        hidden_size = CONFIG.model_hyperparameters.hidden_size
+    if model_num_heads is not None:
+        num_heads = model_num_heads
+    else:
+        num_heads = CONFIG.model_hyperparameters.num_heads
 
     # モデル設定を辞書に保存
     model_config = {
