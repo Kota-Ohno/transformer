@@ -51,7 +51,7 @@ class WarmupScheduler(_BaseScheduler):
             lrs = []
             for base_lr in self.base_lrs:
                 lr_i = base_lr * scale
-                lrs.append(lr_i)
+                lrs.append(max(self.min_lr, lr_i))
             return lrs
         else:
             # warmup終了時のLRを計算（不連続性を避けるため）

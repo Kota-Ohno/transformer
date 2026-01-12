@@ -55,6 +55,8 @@ def download_nltk_resources(
         all_resources = critical_resources
 
     try:
+        # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
+        download_error_logged = False
         # カスタムダウンロードディレクトリを設定（Docker環境に依存しない場所）
         # 環境変数NLTK_DATA_DIRから読み取る、フォールバックとしてutils.pyのディレクトリ + "nltk_data"
         nltk_data_dir = os.environ.get(
@@ -68,9 +70,6 @@ def download_nltk_resources(
         # nltk.data.pathの先頭にカスタムディレクトリを追加（idempotent）
         if nltk_data_dir not in nltk.data.path:
             nltk.data.path.insert(0, nltk_data_dir)
-
-        # 直接ダウンロード（すでに存在するかどうかはdownload関数が内部でチェックする）
-        download_error_logged = False
         for resource in all_resources:
             try:
                 logging.info(f"nltk resource {resource} をダウンロードしています...")
