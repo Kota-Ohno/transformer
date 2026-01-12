@@ -355,16 +355,24 @@ def translate(model: TranslationModel, input_tensor: torch.Tensor, output_vocab:
     if input_tensor is None:
         return None
 
-    # 出力語彙から開始/終了トークンIDを取得
-    start_token_id = output_vocab.get('<s>')
-    end_token_id = output_vocab.get('</s>')
+    # 出力語彙から開始/終了トークンIDを取得（厳密なバリデーション）
+    if '<s>' not in output_vocab:
+        error_msg = (
+            f"出力語彙に '<s>' トークンが存在しません。"
+            f"デコーディングを実行するには、出力語彙に '<s>' トークンが必要です。"
+        )
+        logging.error(error_msg)
+        raise ValueError(error_msg)
+    if '</s>' not in output_vocab:
+        error_msg = (
+            f"出力語彙に '</s>' トークンが存在しません。"
+            f"デコーディングを実行するには、出力語彙に '</s>' トークンが必要です。"
+        )
+        logging.error(error_msg)
+        raise ValueError(error_msg)
 
-    if start_token_id is None:
-        logging.warning(f"出力語彙に '<s>' トークンが見つかりません。デフォルト値{DEFAULT_START_TOKEN_ID}を使用します。")
-        start_token_id = DEFAULT_START_TOKEN_ID
-    if end_token_id is None:
-        logging.warning(f"出力語彙に '</s>' トークンが見つかりません。デフォルト値{DEFAULT_END_TOKEN_ID}を使用します。")
-        end_token_id = DEFAULT_END_TOKEN_ID
+    start_token_id = output_vocab['<s>']
+    end_token_id = output_vocab['</s>']
 
     # 入力テンソルをモデルと同じデバイスに移動
     device = next(model.parameters()).device

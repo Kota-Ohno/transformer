@@ -233,7 +233,7 @@ def _create_data_loaders(
     val_token_ids: List,
     args: argparse.Namespace,
     device: torch.device,
-    output_vocab: Any = None
+    output_vocab: Any
 ) -> Tuple[torch.utils.data.DataLoader, torch.utils.data.DataLoader, int, torch.device]:
     """
     データローダーを作成します。
@@ -296,11 +296,6 @@ def _create_data_loaders(
         logging.info(f"勾配蓄積ステップ数: {grad_accum_steps}, 実効バッチサイズ: {effective_batch_size}")
 
     # パディングトークンIDを取得
-    if output_vocab is None:
-        raise ValueError(
-            "output_vocabがNoneです。パディングトークンIDを取得するために、"
-            "有効なoutput_vocab辞書を提供してください。"
-        )
     if '<pad>' not in output_vocab:
         raise ValueError(
             "output_vocabに'<pad>'キーが存在しません。"
