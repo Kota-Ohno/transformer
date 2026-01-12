@@ -77,6 +77,32 @@ else
 
     validate_device_value "$TRANSFORMER_GLOBAL_DEVICE" "TRANSFORMER_GLOBAL_DEVICE"
     validate_device_value "$TRANSFORMER_DEVICE" "TRANSFORMER_DEVICE"
+
+    # CUDA可用性のランタイムチェック（構文検証後、後方互換性のコピー後に行う）
+    check_cuda_availability() {
+        local value="$1"
+        local var_name="$2"
+        if [ -n "$value" ] && echo "$value" | grep -qE '^cuda'; then
+            # CUDAが利用可能かチェック
+            if ! python -c 'import torch; import sys; sys.exit(0 if torch.cuda.is_available() else 1)'; then
+                echo "ERROR: CUDA is not available, but $var_name is set to '$value'. Please set it to 'cpu' or ensure CUDA is properly configured." >&2
+                exit 1
+            fi
+
+            # "cuda:N"の形式の場合、Nが利用可能なGPU数より小さいか確認
+            if echo "$value" | grep -qE '^cuda:[0-9]+$'; then
+                device_index=$(echo "$value" | sed 's/^cuda://')
+                available_gpus=$(python -c 'import torch; print(torch.cuda.device_count())')
+                if [ "$device_index" -ge "$available_gpus" ]; then
+                    echo "ERROR: Invalid GPU index $device_index for $var_name. Only $available_gpus GPU(s) available (indices 0-$((available_gpus - 1)))." >&2
+                    exit 1
+                fi
+            fi
+        fi
+    }
+
+    check_cuda_availability "$TRANSFORMER_GLOBAL_DEVICE" "TRANSFORMER_GLOBAL_DEVICE"
+    check_cuda_availability "$TRANSFORMER_DEVICE" "TRANSFORMER_DEVICE"
 fi
 
 # アプリケーションを実行
