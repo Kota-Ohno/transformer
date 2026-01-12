@@ -461,8 +461,7 @@ def _initialize_model(
                 if not suppress_errors:
                     raise
                 # suppress_errorsがTrueの場合は通常のモデルを使用するために例外を抑制
-                # 外側のtry-exceptで通常のモデルにフォールバックするため、例外を再発生
-                raise
+                # 外側のtry-exceptで通常のモデルにフォールバックするため、例外を再発生しない
 
             try:
                 logging.info("JITコンパイルのウォームアップ実行...")
