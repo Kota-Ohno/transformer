@@ -49,11 +49,8 @@ class PositionalEncoding(nn.Module):
             位置情報が加算されたテンソル [batch_size, seq_len, d_model]
         """
         # offsetの型と非負チェック
-        if not isinstance(offset, int):
-            try:
-                offset = int(offset)
-            except (ValueError, TypeError):
-                raise ValueError(f"offset must be an integer, got {type(offset).__name__}")
+        if type(offset) is not int:
+            raise TypeError(f"offset must be an integer, got {type(offset).__name__}")
         if offset < 0:
             raise ValueError(f"offset must be non-negative, got {offset}")
 

@@ -250,11 +250,11 @@ GPUメモリに基づく自動調整機能により、学習時にモデルの�
 
 ## 分散トレーニング
 
-複数のGPUを活用するには、`torch.distributed.launch` を使用して `train.py` を実行します:
+複数のGPUを活用するには、`torchrun` を使用して `train.py` を実行します（PyTorch ≥1.10で推奨）:
 
 ```bash
 # 例: 4GPUでの分散トレーニング
-WORLD_SIZE=4 python -m torch.distributed.launch --nproc_per_node=4 train.py [その他のオプション]
+torchrun --nproc_per_node=4 train.py [その他のオプション]
 ```
 
 ## エラー解決
