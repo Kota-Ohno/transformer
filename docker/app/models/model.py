@@ -106,19 +106,33 @@ class TranslationModel(nn.Module):
 
             with torch.no_grad():
                 for _ in range(max_length):
-                    # 現在のターゲットシーケンスのマスクを作成
-                    tgt_mask = self.make_tgt_mask(tgt)
-
-                    # デコーダーで次のトークンを予測
-                    decoder_output, cache = self.decoder(tgt, enc_src, tgt_mask, src_mask, cache)
+                    # キャッシュを使用する場合は最後のトークンのみをデコーダーに渡す
+                    if cache is not None:
+                        # キャッシュがある場合は、最後のトークンのみを使用
+                        decoder_input = tgt[:, -1:] if tgt.size(1) > 0 else tgt
+                        tgt_mask = self.make_tgt_mask(decoder_input)
+                        decoder_output, cache = self.decoder(decoder_input, enc_src, tgt_mask, src_mask, cache)
+                    else:
+                        # キャッシュがない場合は、全シーケンスを使用
+                        tgt_mask = self.make_tgt_mask(tgt)
+                        decoder_output, cache = self.decoder(tgt, enc_src, tgt_mask, src_mask, cache)
 
                     # 最後のトークンの予測を取得 [batch_size, vocab_size]
                     next_token_logits = decoder_output[:, -1, :]
 
+                    # 終了したシーケンスの位置をマスクしてPADトークンを出力
+                    # finishedがTrueの位置では、next_token_logitsをPADトークンに設定
+                    next_token_logits = next_token_logits.clone()
+                    next_token_logits[finished] = float('-inf')
+                    next_token_logits[finished, self.tgt_pad_idx] = float('inf')
+
                     # Greedy search: 最も確率の高いトークンを選択
                     next_token = next_token_logits.argmax(dim=-1, keepdim=True)  # [batch_size, 1]
 
-                    # 生成されたトークンを追加
+                    # 終了したシーケンスの位置ではPADトークンに置き換え
+                    next_token[finished] = self.tgt_pad_idx
+
+                    # 生成されたトークンを追加（終了していないシーケンスのみ）
                     output_ids.append(next_token)
 
                     # 終了トークンが生成されたかチェック
@@ -127,7 +141,12 @@ class TranslationModel(nn.Module):
                         break
 
                     # 次のイテレーションのためにターゲットシーケンスに追加
-                    tgt = torch.cat([tgt, next_token], dim=1)
+                    if cache is not None:
+                        # キャッシュを使用する場合は、最後のトークンのみを追加
+                        tgt = next_token
+                    else:
+                        # キャッシュを使用しない場合は、全シーケンスに追加
+                        tgt = torch.cat([tgt, next_token], dim=1)
 
             # バッチごとにトークンIDを結合 [batch_size, tgt_len]
             if len(output_ids) == 0:

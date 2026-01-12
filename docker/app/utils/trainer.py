@@ -47,13 +47,46 @@ class Trainer:
 
         # 致命的エラー: 空のtrain_loaderを検証（リトライループの外で検証）
         # これは回復不可能なエラーなので、リトライループで捕捉されないようにする
-        if train_loader is None or len(train_loader) == 0:
+        if train_loader is None:
+            error_msg = (
+                "train_loaderがNoneです。データが読み込まれていないか、"
+                "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+            )
+            logging.error(error_msg)
+            raise ValueError(error_msg)
+
+        # IterableDatasetベースのDataLoaderに対応した空チェック
+        try:
+            if hasattr(train_loader, "__len__"):
+                # __len__メソッドが存在する場合（通常のDataset）
+                if len(train_loader) == 0:
+                    error_msg = (
+                        "train_loaderが空です。データが読み込まれていないか、"
+                        "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+                    )
+                    logging.error(error_msg)
+                    raise ValueError(error_msg)
+            else:
+                # __len__メソッドが存在しない場合（IterableDataset）
+                # イテレータを作成して空かどうかをチェック
+                iterator = iter(train_loader)
+                try:
+                    next(iterator)
+                except StopIteration:
+                    error_msg = (
+                        "train_loaderが空です。データが読み込まれていないか、"
+                        "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
+                    )
+                    logging.error(error_msg)
+                    raise ValueError(error_msg)
+        except TypeError as e:
+            # TypeErrorが発生した場合も同じエラーメッセージで処理
             error_msg = (
                 "train_loaderが空です。データが読み込まれていないか、"
                 "DataLoaderの設定に問題があります。データセットのパスやフィルタリング条件を確認してください。"
             )
             logging.error(error_msg)
-            raise ValueError(error_msg)
+            raise ValueError(error_msg) from e
 
         # Weights & Biasesのセットアップ
         if not self.args.no_wandb:

@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import os
+import sys
 import argparse
 import logging
 from typing import Optional, List, Tuple, Dict, Any
@@ -634,7 +635,8 @@ def main(argv: Optional[List[str]] = None) -> None:
     if args.checkpoint:
         logging.info(f"--checkpointオプションが指定されました。チェックポイント '{args.checkpoint}' から再開します。")
         if not os.path.exists(args.checkpoint):
-            logging.warning(f"指定されたチェックポイントファイルが見つかりません: {args.checkpoint}")
+            logging.error(f"指定されたチェックポイントファイルが見つかりません: {args.checkpoint}")
+            sys.exit(1)
 
     # Trainerクラスのインスタンスを作成し、トレーニングを開始
     trainer = Trainer(
