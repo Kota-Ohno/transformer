@@ -70,7 +70,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
                       help='データ拡張の割合 (0.0〜1.0)')
     parser.add_argument('--epochs', type=int, default=CONFIG.training_config.num_epochs, help='エポック数')
     parser.add_argument('--batch-size', type=int, default=CONFIG.training_config.batch_size, help='バッチサイズ')
-    parser.add_argument('--learning-rate', type=float, default=CONFIG.training_config.learning_rate, help='学習率')
+    parser.add_argument('--learning-rate', type=float, default=None, help='学習率')
     parser.add_argument('--patience', type=int, default=CONFIG.training_config.patience, help='早期停止のペイシェンス')
     parser.add_argument('--warmup-steps', type=int, default=CONFIG.training_config.warmup_steps, help='Warmupステップ数')
     parser.add_argument('--fast', action='store_true', help='高速モード (少ないエポック数での実験)')

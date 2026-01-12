@@ -170,8 +170,34 @@ def calculate_loss(
     if reduction not in ["mean", "sum", "none"]:
         raise ValueError(f"Invalid reduction: {reduction}")
 
-    # 損失計算の実装
-    # ...
+    # 形状の検証
+    if predictions.dim() != 3 or targets.dim() != 2:
+        raise RuntimeError(
+            f"Invalid tensor shapes: predictions must be 3D (batch_size, seq_len, vocab_size), "
+            f"targets must be 2D (batch_size, seq_len). "
+            f"Got predictions.shape={predictions.shape}, targets.shape={targets.shape}"
+        )
+    if predictions.shape[:2] != targets.shape:
+        raise RuntimeError(
+            f"Shape mismatch: predictions.shape[:2]={predictions.shape[:2]} "
+            f"does not match targets.shape={targets.shape}"
+        )
+
+    # テンソルをフラット化: (batch_size, seq_len, vocab_size) -> (N, vocab_size)
+    # および (batch_size, seq_len) -> (N,)
+    batch_size, seq_len, vocab_size = predictions.shape
+    predictions_flat = predictions.view(-1, vocab_size)
+    targets_flat = targets.view(-1)
+
+    # クロスエントロピー損失を計算
+    import torch.nn.functional as F
+    loss = F.cross_entropy(
+        predictions_flat,
+        targets_flat,
+        ignore_index=ignore_index,
+        reduction=reduction
+    )
+
     return loss
 ```
 

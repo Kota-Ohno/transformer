@@ -163,8 +163,5 @@ docker/app/nltk_data/
 *.model
 *.vocab
 
-# Tokenized data files
-tokenized_*.pth
-
 # Checkpoints
 checkpoints/
