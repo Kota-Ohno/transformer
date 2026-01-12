@@ -204,10 +204,17 @@ def normalize_text(text: str, lang: str, normalize_numeric: Optional[Union[str, 
     text = re.sub(r'\s+', ' ', text)
 
     # 数字の正規化
-    if normalize_numeric is not None and normalize_numeric is not False and normalize_numeric != '':
-        # 数字列を指定されたトークンに置き換え（デフォルト: '<NUM>'）
-        text = re.sub(r'\d+', str(normalize_numeric), text)
-    # normalize_numeric が None または False の場合は数字を置き換えない
+    # replacement_tokenを決定: Trueの場合は'<NUM>'、文字列の場合はその文字列を使用
+    if normalize_numeric is True:
+        replacement_token = '<NUM>'
+    elif normalize_numeric is not None and normalize_numeric is not False and normalize_numeric != '':
+        replacement_token = str(normalize_numeric)
+    else:
+        # normalize_numeric が None または False または空文字列の場合は数字を置き換えない
+        replacement_token = None
+
+    if replacement_token is not None:
+        text = re.sub(r'\d+', replacement_token, text)
 
     # 句読点の周囲に空白を追加（英語のみ）
     if lang == "en_US":

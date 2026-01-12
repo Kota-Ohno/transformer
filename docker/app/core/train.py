@@ -318,8 +318,12 @@ def _create_data_loaders(
         pin_memory = False
         persistent_workers = False
     else:
-        num_workers = args.num_workers if not torch.cuda.is_available() else min(args.num_workers, MAX_NUM_WORKERS_CUDA)
-        pin_memory = torch.cuda.is_available()
+        # device.type == 'cuda'を使用して一貫性を保つ（_check_and_setup_gpuで決定されたデバイスに基づく）
+        if device.type == 'cuda':
+            num_workers = min(args.num_workers, MAX_NUM_WORKERS_CUDA)
+        else:
+            num_workers = args.num_workers
+        pin_memory = (device.type == 'cuda')
         persistent_workers = num_workers > 0
 
     train_loader = torch.utils.data.DataLoader(

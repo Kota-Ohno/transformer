@@ -40,6 +40,18 @@ docker compose up -d
 docker exec -it transformer /bin/sh
 ```
 
+**注意**: 上記のコマンドでは、`transformer`は`docker-compose.yml`で定義されたサービス名（およびコンテナ名）です。コンテナ名が異なる場合は、以下のコマンドで実行中のコンテナ名を確認できます：
+
+```bash
+# Docker Composeを使用している場合
+docker compose ps
+
+# または、Dockerコマンドで直接確認
+docker ps --format '{{.Names}}'
+```
+
+確認したコンテナ名を`docker exec`コマンドで使用してください。
+
 ### 3. データの準備とトレーニング
 
 #### トレーニングデータの配置

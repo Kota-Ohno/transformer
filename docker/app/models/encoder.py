@@ -61,6 +61,9 @@ class Encoder(nn.Module):
         # 位置エンコーディング
         self.pos_encoding = PositionalEncoding(d_model, max_seq_length)
 
+        # 最大シーケンス長を保存（forwardメソッドで検証に使用）
+        self.max_seq_length = max_seq_length
+
         # エンコーダーレイヤー
         self.layers = nn.ModuleList([
             EncoderLayer(d_model, num_heads, d_ff, dropout)
@@ -83,10 +86,21 @@ class Encoder(nn.Module):
 
         Returns:
             出力テンソル [batch_size, seq_len, d_model]
+
+        Raises:
+            ValueError: 入力シーケンス長がmax_seq_lengthを超える場合
         """
         # 入力バリデーション: 整数型と範囲チェック
         vocab_size = self.embedding.num_embeddings
         validate_token_ids(x, vocab_size, tensor_name="encoder input")
+
+        # シーケンス長の検証
+        seq_len = x.size(1)
+        if seq_len > self.max_seq_length:
+            raise ValueError(
+                f"入力シーケンス長 ({seq_len}) が最大シーケンス長 ({self.max_seq_length}) を超えています。"
+                f"PositionalEncodingのインデックスエラーを防ぐため、シーケンス長を{self.max_seq_length}以下にしてください。"
+            )
 
         # 埋め込みと位置エンコーディング
         x = self.embedding(x) * math.sqrt(self.d_model)
