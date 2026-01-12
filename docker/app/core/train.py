@@ -366,6 +366,16 @@ def _initialize_model(
     logging.info(f"入力ボキャブラリーサイズ: {input_dim}, 出力ボキャブラリーサイズ: {output_dim}")
 
     # パディングインデックスを取得
+    if '<pad>' not in input_vocab:
+        raise ValueError(
+            "input_vocabに'<pad>'キーが存在しません。"
+            "有効なinput_vocab辞書を提供してください。"
+        )
+    if '<pad>' not in output_vocab:
+        raise ValueError(
+            "output_vocabに'<pad>'キーが存在しません。"
+            "有効なoutput_vocab辞書を提供してください。"
+        )
     src_pad_idx = input_vocab['<pad>']
     tgt_pad_idx = output_vocab['<pad>']
 

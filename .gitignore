@@ -153,7 +153,6 @@ cython_debug/
 
 # Project specific
 docker/app/logs/
-docker/app/logs/config/
 docker/app/wandb/
 docker/app/nltk_data/
 

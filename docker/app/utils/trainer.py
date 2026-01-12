@@ -507,15 +507,11 @@ class Trainer:
 
                     # 回復可能なエラーかどうかを判定
                     if self._is_recoverable_error(e):
-                        if retry_attempt < self.max_epoch_retries:
-                            logging.warning(f"回復可能なエラーを検出しました。クリーンアップ後にリトライします...")
-                            self._cleanup_after_error()
-                            retry_attempt += 1
-                            # whileループが継続してリトライ
-                        else:
+                        retry_attempt += 1
+                        if retry_attempt >= self.max_epoch_retries:
+                            # リトライ回数が尽きた場合: チェックポイントを保存してから停止
                             logging.error(f"エポック {epoch+1} で最大リトライ回数 ({self.max_epoch_retries}) に達しました。"
                                          f"チェックポイントを保存してトレーニングを停止します。")
-                            # チェックポイントを保存してから停止
                             try:
                                 save_checkpoint(
                                     model=self.model,
@@ -538,6 +534,12 @@ class Trainer:
                                 logging.error(f"チェックポイントの保存に失敗しました: {checkpoint_error}")
                             # 元の例外を再発生させてトレーニングを停止
                             raise
+                        else:
+                            # リトライ可能な場合: クリーンアップしてループを継続
+                            logging.warning(f"回復可能なエラーを検出しました（リトライ試行: {retry_attempt}/{self.max_epoch_retries}）。クリーンアップ後にリトライします...")
+                            self._cleanup_after_error()
+                            # continueでループを継続してリトライ
+                            continue
                     else:
                         # 予期しない致命的なエラー: ログに記録して再発生
                         logging.error(f"致命的な予期しないエラーが発生しました。トレーニングを停止します。")
