@@ -13,11 +13,11 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     python -m spacy download ja_core_news_md && \
     rm -f requirements.txt requirements-gpu.txt
 
-# エントリーポイントスクリプトをコピー
-COPY entrypoint.sh /src/entrypoint.sh
-
 # アプリケーションコードをコピー
 COPY app/ .
+
+# エントリーポイントスクリプトをコピー（app/の後に実行して上書きを防ぐ）
+COPY entrypoint.sh /src/entrypoint.sh
 
 # 非rootユーザーの作成
 RUN groupadd -r transformer && \

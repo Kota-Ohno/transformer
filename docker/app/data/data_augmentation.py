@@ -433,11 +433,50 @@ class DataAugmentor:
                     logging.error(error_msg)
                     raise AttributeError(error_msg)
 
+                # 特殊トークンIDを取得（フィルタリング用）
+                special_token_ids = set()
+                try:
+                    if hasattr(tgt_tokenizer, 'pad_id') and callable(tgt_tokenizer.pad_id):
+                        pad_token_id = tgt_tokenizer.pad_id()
+                        if pad_token_id is not None and pad_token_id >= 0:
+                            special_token_ids.add(pad_token_id)
+                    if hasattr(tgt_tokenizer, 'eos_id') and callable(tgt_tokenizer.eos_id):
+                        eos_token_id = tgt_tokenizer.eos_id()
+                        if eos_token_id is not None and eos_token_id >= 0:
+                            special_token_ids.add(eos_token_id)
+                    if hasattr(tgt_tokenizer, 'unk_id') and callable(tgt_tokenizer.unk_id):
+                        unk_token_id = tgt_tokenizer.unk_id()
+                        if unk_token_id is not None and unk_token_id >= 0:
+                            special_token_ids.add(unk_token_id)
+                    if hasattr(tgt_tokenizer, 'bos_id') and callable(tgt_tokenizer.bos_id):
+                        bos_token_id = tgt_tokenizer.bos_id()
+                        if bos_token_id is not None and bos_token_id >= 0:
+                            special_token_ids.add(bos_token_id)
+                except Exception as e:
+                    logging.warning(f"特殊トークンIDの取得中にエラーが発生しました: {e}")
+
                 # 各アイテムごとに後処理
                 for batch_idx, orig_idx in enumerate(valid_indices):
                     try:
                         # 出力をトークンIDに変換（CPUに移動してから）
-                        output_ids = output_tensor[batch_idx].cpu().numpy().tolist()
+                        output_ids_raw = output_tensor[batch_idx].cpu().numpy().tolist()
+
+                        # パディングと特殊トークンを除去し、eos_token_idで停止
+                        output_ids = []
+                        eos_token_id = None
+                        if hasattr(tgt_tokenizer, 'eos_id') and callable(tgt_tokenizer.eos_id):
+                            try:
+                                eos_token_id = tgt_tokenizer.eos_id()
+                            except Exception:
+                                pass
+
+                        for token_id in output_ids_raw:
+                            # eos_token_idが見つかったら停止
+                            if eos_token_id is not None and token_id == eos_token_id:
+                                break
+                            # 特殊トークンをスキップ
+                            if token_id not in special_token_ids:
+                                output_ids.append(token_id)
 
                         # IDをトークンに変換
                         output_tokens = tgt_tokenizer.decode_ids(output_ids)

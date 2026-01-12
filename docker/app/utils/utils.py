@@ -185,13 +185,20 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
     """
     _maybe_log_constants_import_failure()
     try:
-        # テンソルの場合はリストに変換（2次元以上の場合はフラット化）
+        # テンソルの場合はリストに変換
         if isinstance(ids, torch.Tensor):
-            # 2次元以上のテンソルの場合はフラット化してからリストに変換
-            if ids.ndim >= 2:
-                ids = ids.flatten().cpu().tolist()
-            else:
+            if ids.ndim == 1:
+                # 1次元テンソル: そのままリストに変換
                 ids = ids.cpu().tolist()
+            elif ids.ndim == 2:
+                # 2次元テンソル: バッチ構造を保持してリストのリストに変換
+                ids = ids.cpu().tolist()
+            else:
+                # 3次元以上のテンソル: 予期しない次元数
+                raise ValueError(
+                    f"予期しないテンソルの次元数: {ids.ndim}。"
+                    f"1次元（単一シーケンス）または2次元（バッチ）のみサポートされています。"
+                )
 
         # IDから単語に変換
         words = []
