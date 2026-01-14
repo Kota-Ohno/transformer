@@ -11,7 +11,6 @@ import sys
 import argparse
 import logging
 import torch
-from datetime import datetime
 import copy
 import colorama
 

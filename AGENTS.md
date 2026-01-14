@@ -277,8 +277,11 @@ pytest docker/app/models/test_encoder.py
 # 特定のテストファイルを実行（Pattern B: 専用のtestsディレクトリ）
 pytest docker/app/tests/test_example.py
 
-# カバレッジ付きで実行（オプション、Pattern Aの例）
-pytest --cov=docker/app --cov-report=html docker/app/models/test_encoder.py
+# カバレッジ付きで実行（オプション）
+# プロジェクト全体のカバレッジを取得する場合:
+pytest --cov=docker/app --cov-report=html
+# 特定のモジュールのカバレッジを取得する場合（Pattern Aの例）:
+pytest --cov=docker/app/models/encoder --cov-report=html docker/app/models/test_encoder.py
 ```
 
 #### Dockerコンテナ内での実行

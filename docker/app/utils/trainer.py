@@ -7,7 +7,6 @@ from tqdm import tqdm
 import os
 import traceback
 from datetime import datetime
-import itertools
 
 from typing import Optional, Dict, Any, Tuple
 from utils.config import CONFIG
@@ -71,12 +70,15 @@ class Trainer:
             else:
                 # __len__メソッドが存在しない場合（IterableDataset）
                 # イテレータを作成して空かどうかをチェック
-                # 最初のバッチを消費しないように、キャプチャして復元する
+                # 空チェックのみを行い、元のtrain_loaderを保持する
+                # （各エポックで新しいイテレータを作成できるようにする）
                 iterator = iter(train_loader)
                 try:
-                    first_batch = next(iterator)
-                    # 最初のバッチを復元したイテラブルを作成してself.train_loaderに保存
-                    self.train_loader = itertools.chain([first_batch], iterator)
+                    # 最初のバッチを取得して空でないことを確認
+                    next(iterator)
+                    # 空でないことが確認できたので、元のtrain_loaderを保持
+                    # 各エポックでiter(train_loader)を呼び出すことで新しいイテレータが作成される
+                    self.train_loader = train_loader
                 except StopIteration:
                     error_msg = (
                         "train_loaderが空です。データが読み込まれていないか、"

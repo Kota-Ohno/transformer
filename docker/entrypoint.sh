@@ -93,7 +93,10 @@ else
             if echo "$value" | grep -qE '^cuda:[0-9]+$'; then
                 device_index=$(echo "$value" | sed 's/^cuda://')
                 available_gpus=$(python -c 'import torch; print(torch.cuda.device_count())')
-                if [ "$device_index" -ge "$available_gpus" ]; then
+                if [ "$available_gpus" -eq 0 ]; then
+                    echo "ERROR: No GPUs available (available_gpus=0), but $var_name is set to '$value'. Please set it to 'cpu' or ensure GPUs are available." >&2
+                    exit 1
+                elif [ "$device_index" -ge "$available_gpus" ]; then
                     echo "ERROR: Invalid GPU index $device_index for $var_name. Only $available_gpus GPU(s) available (indices 0-$((available_gpus - 1)))." >&2
                     exit 1
                 fi
