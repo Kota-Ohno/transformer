@@ -220,10 +220,12 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
         # IDから単語に変換
         words = []
         for idx in ids:
-            # 辞書にない場合はスキップ
-            if idx not in id2word:
+            # 辞書に存在するかチェックしてからアクセス（KeyErrorを回避）
+            try:
+                word = id2word[idx]
+            except KeyError:
+                # 辞書にない場合はスキップ
                 continue
-            word = id2word[idx]
             # 特殊トークンをスキップする場合
             if skip_special:
                 # constantsモジュールが利用可能でSPECIAL_TOKENS属性が存在する場合のみチェック
@@ -247,10 +249,10 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
         logging.exception("テキスト変換エラー（値エラー）")
         raise
     except KeyError as e:
-        # KeyError（辞書に存在しないキー）はログに記録して空文字列を返す
+        # KeyError（辞書に存在しないキー）はログに記録して再発生
         logging.exception("テキスト変換エラー（キーエラー）")
-        return ""
+        raise
     except Exception as e:
-        # その他の予期しないエラーはトレースバックをログに記録して空文字列を返す
+        # その他の予期しないエラーはトレースバックをログに記録して再発生
         logging.exception("テキスト変換エラー")
-        return ""
+        raise

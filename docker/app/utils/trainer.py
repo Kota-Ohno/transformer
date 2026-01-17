@@ -304,6 +304,22 @@ class Trainer:
                 "lr": f"{current_lr:.6f}"
             })
 
+        # total_batchesがNone（IterableDataset）の場合、残りの勾配を適用
+        if total_batches is None and batch_count % accumulation_steps != 0:
+            # 残りの勾配を適用
+            if self.scaler is not None:
+                self.scaler.unscale_(self.optimizer)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+            else:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), CONFIG.training_config.grad_clip_norm)
+                self.optimizer.step()
+            # スケジューラーのステップ
+            if hasattr(self, "scheduler") and self.scheduler is not None:
+                self.scheduler.step()
+            self.optimizer.zero_grad(set_to_none=True)
+
         # total_batchesがNoneの場合、ループ内でカウントしたバッチ数を使用
         actual_batch_count = total_batches if total_batches is not None else batch_count
         if actual_batch_count > 0:

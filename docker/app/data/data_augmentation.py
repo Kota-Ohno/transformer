@@ -379,16 +379,17 @@ class DataAugmentor:
                 augmented_texts.extend(translations)
             except Exception as e:
                 logging.error(f"逆翻訳中にエラーが発生しました: {e}")
-                # エラー発生時は元のテキストをそのまま使用
-                # バッチの開始インデックスを計算して、対応するsrc_textsの要素を取得
+                # エラー発生時はforward_translationsを優先的に使用し、なければbatchを使用
+                # バッチの開始インデックスを計算
                 batch_start_idx = batch_idx * batch_size
                 fallback_texts = []
                 for i in range(len(batch)):
-                    original_idx = batch_start_idx + i
-                    if original_idx < len(src_texts):
-                        fallback_texts.append(src_texts[original_idx])
+                    # forward_translationsが存在し、対応するインデックスが有効な場合はそれを使用
+                    forward_idx = batch_start_idx + i
+                    if forward_idx < len(forward_translations):
+                        fallback_texts.append(forward_translations[forward_idx])
                     else:
-                        logging.warning(f"インデックス {original_idx} が範囲外です。元のバッチ要素を使用します。")
+                        # forward_translationsが存在しない場合は、現在のバッチ要素を使用
                         fallback_texts.append(batch[i])
                 augmented_texts.extend(fallback_texts)
 

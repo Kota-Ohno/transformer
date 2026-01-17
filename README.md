@@ -142,8 +142,12 @@ python text_tokenizer.py --augment
 # データ拡張の割合を指定 (例: 元データの40%を拡張)
 python text_tokenizer.py --augment --augment-factor 0.4
 
-# サンプルサイズを指定 (開発用、本番環境では0で全データ使用)
-python text_tokenizer.py --sample-size 5000
+# サンプルサイズを指定
+# --sample-size 0: 制限なし、全データを使用（本番環境推奨）
+# --sample-size N: 最初のNサンプルのみを使用（開発・テスト用）
+# デフォルト値: 0（全データ使用）
+# 本番環境では --sample-size 0 を指定するか、フラグを省略してください
+python text_tokenizer.py --augment --augment-factor 0.4 --sample-size 0
 ```
 
 #### トレーニングオプション
@@ -311,10 +315,23 @@ python predict.py
    ```bash
    # nvidia-smiでリアルタイム監視
    watch -n 1 nvidia-smi
+   ```
 
-   # PyTorchプロファイラを使用（コードに追加）
-   # with torch.profiler.profile(...) as prof:
-   #     prof.export_chrome_trace("trace.json")
+   トレーニングスクリプト（例: `train.py`）のトレーニングループ内に以下のコードを追加して、PyTorchプロファイラを使用できます：
+   ```python
+   with torch.profiler.profile(
+       activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+       profile_memory=True,
+       record_shapes=True
+   ) as prof:
+       # トレーニングループ内のコード
+       output, _ = model(src, tgt_input)
+       loss = criterion(output, tgt_output)
+       loss.backward()
+       optimizer.step()
+
+   # プロファイル結果をChrome trace形式でエクスポート
+   prof.export_chrome_trace("trace.json")
    ```
 
 2. **バッチサイズの調整**: GPUメモリが許す限り大きく設定（OOMエラーが出る場合は段階的に減らす）

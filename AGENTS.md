@@ -136,6 +136,7 @@ Googleスタイルのdocstringを使用してください。以下のセクシ�
 ```python
 from typing import List, Optional
 import torch
+import torch.nn.functional as F
 from torch import Tensor
 
 
@@ -193,7 +194,6 @@ def calculate_loss(
     ignore_idx = -100 if ignore_index is None else ignore_index
 
     # クロスエントロピー損失を計算
-    import torch.nn.functional as F
     loss = F.cross_entropy(
         predictions_flat,
         targets_flat,

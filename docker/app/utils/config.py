@@ -104,6 +104,20 @@ class ModelHyperparameters:
             ValueError: hidden_sizeがnum_headsで割り切れない場合。
                 エラーメッセージにはhidden_sizeとnum_headsの値が含まれます。
         """
+        self.validate()
+
+    def validate(self) -> None:
+        """
+        ハイパーパラメータのバリデーションを実行します。
+
+        Transformerモデルの制約として、hidden_sizeはnum_headsで割り切れる必要があります。
+        この制約を満たさない場合、モデル初期化時にエラーが発生するため、
+        設定段階で検証を行います。
+
+        Raises:
+            ValueError: hidden_sizeがnum_headsで割り切れない場合。
+                エラーメッセージにはhidden_sizeとnum_headsの値が含まれます。
+        """
         if self.hidden_size % self.num_heads != 0:
             raise ValueError(
                 f"Invalid ModelHyperparameters: hidden_size ({self.hidden_size}) must be divisible by "
@@ -211,9 +225,13 @@ class GlobalConfig:
 
         # config.jsonからのオーバーライド
         self._load_from_json("config.json")
+        # JSON読み込み後にバリデーションを再実行
+        self.model_hyperparameters.validate()
 
         # 環境変数からのオーバーライドとデバイス検証（最高優先度）
         self._apply_env_overrides()
+        # 環境変数適用後にバリデーションを再実行
+        self.model_hyperparameters.validate()
 
     def initialize_gpu_aware_defaults(self):
         """

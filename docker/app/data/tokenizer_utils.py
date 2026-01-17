@@ -163,6 +163,18 @@ def train_and_load_sp_models(
         sp_tgt.load(f"{tgt_model_prefix}.model")
     except Exception as e:
         logger.error(f"SentencePieceモデルのロード中にエラーが発生しました: {e}")
+        # 生成されたアーティファクトを削除（トレーニング失敗時と同様のクリーンアップ）
+        src_files = glob.glob(f"{src_model_prefix}*")
+        tgt_files = glob.glob(f"{tgt_model_prefix}*")
+        all_files = src_files + tgt_files
+        if all_files:
+            logger.info(f"部分的なモデルのアーティファクトを削除中: {all_files}")
+            for file_path in all_files:
+                try:
+                    os.remove(file_path)
+                    logger.debug(f"削除しました: {file_path}")
+                except OSError as os_err:
+                    logger.warning(f"ファイルの削除に失敗しました ({file_path}): {os_err}")
         raise
 
     return sp_src, sp_tgt
