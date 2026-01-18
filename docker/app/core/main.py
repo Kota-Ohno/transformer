@@ -10,6 +10,7 @@ import os
 import sys
 import argparse
 import logging
+import traceback
 import torch
 import copy
 import colorama
@@ -261,6 +262,5 @@ if __name__ == "__main__":
         sys.exit(130)  # SIGINT の標準的な終了コード
     except Exception as e:
         logging.error(f"エラーが発生しました: {e}")
-        import traceback
         logging.error(traceback.format_exc())
         sys.exit(1)

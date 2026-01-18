@@ -260,6 +260,10 @@ def decode_for_bleu(
     target_sentences: List[List[List[str]]] = []
     predicted_sentences: List[List[str]] = []
 
+    # 除外されたサンプル数をカウント
+    excluded_empty_pairs = 0
+    total_samples = len(pred_tokens_cpu)
+
     # 各サンプルについて処理
     for pred, target in zip(pred_tokens_cpu, tgt_tokens_cpu):
         # パディングとEOSトークン以降を除去
@@ -283,6 +287,17 @@ def decode_for_bleu(
         if pred_tokens and target_tokens:
             predicted_sentences.append(pred_tokens)  # List[List[str]]: 各予測文はトークンのリスト
             target_sentences.append([target_tokens])  # List[List[List[str]]]: BLEUの形式に合わせて参照訳をリストのリストに
+        else:
+            excluded_empty_pairs += 1
+
+    # 除外されたサンプル数をログに記録
+    if excluded_empty_pairs > 0:
+        logging.info(
+            f"BLEU計算用サンプルフィルタリング: "
+            f"総サンプル数={total_samples}, "
+            f"除外されたサンプル数={excluded_empty_pairs} "
+            f"(pred_tokensまたはtarget_tokensが空のため)"
+        )
 
     return target_sentences, predicted_sentences
 
