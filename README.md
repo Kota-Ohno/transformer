@@ -133,22 +133,32 @@ python predict.py
 
 #### データ拡張の使用
 
-データ拡張は `text_tokenizer.py` でデータを準備する際に適用されます。
+データ拡張は以下の2つの方法で使用できます：
 
-```bash
-# データ拡張を有効にしてトークナイズ (デフォルトの拡張率 0.3)
-python text_tokenizer.py --augment
+1. **前処理時のデータ拡張（`text_tokenizer.py`）**: オフラインでデータを拡張し、トークナイズ済みデータセットに保存します。同じ拡張データを複数回のトレーニングで再利用できます。
 
-# データ拡張の割合を指定 (例: 元データの40%を拡張)
-python text_tokenizer.py --augment --augment-factor 0.4
+2. **トレーニング時のデータ拡張（`train.py --augment`）**: トレーニング中にオンザフライでデータを拡張します。各エポックで異なる拡張が適用され、より多様なデータで学習できます。
 
-# サンプルサイズを指定
-# --sample-size 0: 制限なし、全データを使用（本番環境推奨）
-# --sample-size N: 最初のNサンプルのみを使用（開発・テスト用）
-# デフォルト値: 0（全データ使用）
-# 本番環境では --sample-size 0 を指定するか、フラグを省略してください
-python text_tokenizer.py --augment --augment-factor 0.4 --sample-size 0
-```
+**推奨ワークフロー:**
+- **オフライン拡張（推奨）**: 大規模データセットや再現性を重視する場合
+  ```bash
+  # データ拡張を有効にしてトークナイズ (デフォルトの拡張率 0.3)
+  python text_tokenizer.py --augment
+
+  # データ拡張の割合を指定 (例: 元データの40%を拡張)
+  python text_tokenizer.py --augment --augment-factor 0.4
+  ```
+
+- **オンザフライ拡張**: トレーニング時の多様性を重視する場合
+  ```bash
+  # トレーニング時にデータ拡張を適用 (デフォルトの拡張率 0.3)
+  python train.py --augment
+
+  # データ拡張の割合を指定
+  python train.py --augment --augment-factor 0.4
+  ```
+
+**注意**: `train.py --augment`を使用する場合は、事前にSentencePieceモデル（`models/sp_src.pth`、`models/sp_tgt.pth`）が存在する必要があります。これらは`text_tokenizer.py`を実行することで生成されます。
 
 #### トレーニングオプション
 
@@ -164,7 +174,8 @@ python main.py --small-model
 # main.py を使用したサンプル数制限付きトレーニング (開発用)
 python main.py --limit-samples 1000
 
-# train.py を使用したデータ拡張を有効にしたトレーニング
+# train.py を使用したオンザフライデータ拡張を有効にしたトレーニング
+# 注意: 事前にSentencePieceモデル（models/sp_src.pth、models/sp_tgt.pth）が必要です
 python train.py --augment --augment-factor 0.3
 
 # 最新のチェックポイントからトレーニングを再開
@@ -241,7 +252,11 @@ GPUメモリに基づく自動調整機能により、学習時にモデルの�
 3.  **トークン置換**: ランダムにトークンを別のトークンに置き換えます
 4.  **トークン順序入れ替え**: 局所的な窓内でトークンの順序をランダムに入れ替えます
 
-これらの拡張は `text_tokenizer.py` でデータを準備する際に `--augment` オプションを有効にすることで適用されます。拡張の度合いは `--augment-factor` オプションで調整できます（デフォルトは元データの30%）。
+これらの拡張は以下の2つの方法で適用できます：
+- **`text_tokenizer.py --augment`**: 前処理時にオフラインでデータを拡張し、トークナイズ済みデータセットに保存します。
+- **`train.py --augment`**: トレーニング中にオンザフライでデータを拡張します（各エポックで異なる拡張が適用されます）。
+
+拡張の度合いは `--augment-factor` オプションで調整できます（デフォルトは元データの30%）。詳細は[データ拡張の使用](#データ拡張の使用)セクションを参照してください。
 
 ## チェックポイントと再開機能
 
@@ -289,13 +304,18 @@ torchrun --nproc_per_node=4 train.py [その他のオプション]
 最適な学習結果を得るための推奨コマンド設定例:
 
 ```bash
-# 1. 前処理：データ拡張を使用してトークナイズ (必要に応じてサンプルサイズも指定)
-python text_tokenizer.py --augment --augment-factor 0.4 [--sample-size N]
+# 1. 前処理：データ拡張を使用してトークナイズ（オフライン拡張、推奨）
+# または、オンザフライ拡張を使用する場合はこのステップをスキップ
+python text_tokenizer.py --augment --augment-factor 0.4
 
 # 2. 高速に効率的に学習する場合 (推奨)
 python main.py --fast
 
 # 3. より詳細に設定して学習する場合
+# オプションA: オフライン拡張済みデータを使用（ステップ1で拡張済みの場合）
+python train.py --batch-size 64 --epochs 30 --warmup-steps 4000
+
+# オプションB: オンザフライ拡張を使用（ステップ1をスキップした場合）
 python train.py --batch-size 64 --epochs 30 --warmup-steps 4000 --augment --augment-factor 0.4
 
 # 4. 長期トレーニング中断時の再開

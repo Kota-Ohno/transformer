@@ -48,6 +48,10 @@ def evaluate(
     all_references = []
     all_hypotheses = []
 
+    # 戻り値の初期化（例外発生時でも安全に返せるように）
+    avg_loss = float('inf')
+    bleu_score = 0.0
+
     # BLEUスコア計算用の最小サンプル数
     bleu_sample_batches = getattr(config, 'bleu_sample_batches', DEFAULT_BLEU_SAMPLE_BATCHES)
     max_bleu_samples = min(bleu_sample_batches, len(valid_loader))
@@ -179,7 +183,8 @@ def evaluate(
     except Exception as e:
         logging.error(f"評価中にエラーが発生: {e}")
         logging.error(traceback.format_exc())
-        return float('inf'), 0.0
+        # 初期化済みの値を返す（avg_lossとbleu_scoreは既に初期化されている）
+        return avg_loss, bleu_score
 
     return avg_loss, bleu_score
 
