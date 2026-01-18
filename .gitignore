@@ -156,8 +156,8 @@ docker/app/logs/
 docker/app/wandb/
 docker/app/nltk_data/
 # Also ignore logs outside Docker structure (for non-Docker development)
-./app/logs/
-./app/logs/config
+app/logs/
+app/logs/config
 
 # Model files
 *.pth

@@ -92,6 +92,15 @@ class ModelHyperparameters:
     max_seq_length: int = 512
     rel_pos_max_distance: int = 128
 
+    # 各フィールドが明示的に設定されたかどうかを追跡するフラグ
+    _is_set_hidden_size: bool = field(default=False, init=False, repr=False)
+    _is_set_num_heads: bool = field(default=False, init=False, repr=False)
+    _is_set_num_layers: bool = field(default=False, init=False, repr=False)
+    _is_set_d_ff: bool = field(default=False, init=False, repr=False)
+    _is_set_dropout_rate: bool = field(default=False, init=False, repr=False)
+    _is_set_max_seq_length: bool = field(default=False, init=False, repr=False)
+    _is_set_rel_pos_max_distance: bool = field(default=False, init=False, repr=False)
+
     def __post_init__(self) -> None:
         """
         ハイパーパラメータのバリデーションを実行します。
@@ -134,7 +143,7 @@ class ModelHyperparameters:
         Returns:
             ModelHyperparameters: 変換されたModelHyperparametersインスタンス
         """
-        return cls(
+        instance = cls(
             hidden_size=model_config.hidden_size,
             num_heads=model_config.num_heads,
             num_layers=model_config.num_layers,
@@ -143,6 +152,15 @@ class ModelHyperparameters:
             max_seq_length=model_config.max_seq_length,
             rel_pos_max_distance=model_config.rel_pos_max_distance
         )
+        # すべてのフィールドが明示的に設定されたことをマーク
+        instance._is_set_hidden_size = True
+        instance._is_set_num_heads = True
+        instance._is_set_num_layers = True
+        instance._is_set_d_ff = True
+        instance._is_set_dropout_rate = True
+        instance._is_set_max_seq_length = True
+        instance._is_set_rel_pos_max_distance = True
+        return instance
 
 @dataclass
 class TrainingConfig:
@@ -245,20 +263,20 @@ class GlobalConfig:
         adjusted_model_config = ModelConfig.from_gpu_memory()
         adjusted_hyperparams = ModelHyperparameters.from_model_config(adjusted_model_config)
 
-        # 現在の値がデフォルト値の場合のみ更新（未設定の値のみ設定）
-        if self.model_hyperparameters.hidden_size == ModelHyperparameters.hidden_size:
+        # 明示的に設定されていない値のみ更新（未設定の値のみ設定）
+        if not self.model_hyperparameters._is_set_hidden_size:
             self.model_hyperparameters.hidden_size = adjusted_hyperparams.hidden_size
-        if self.model_hyperparameters.num_heads == ModelHyperparameters.num_heads:
+        if not self.model_hyperparameters._is_set_num_heads:
             self.model_hyperparameters.num_heads = adjusted_hyperparams.num_heads
-        if self.model_hyperparameters.num_layers == ModelHyperparameters.num_layers:
+        if not self.model_hyperparameters._is_set_num_layers:
             self.model_hyperparameters.num_layers = adjusted_hyperparams.num_layers
-        if self.model_hyperparameters.d_ff == ModelHyperparameters.d_ff:
+        if not self.model_hyperparameters._is_set_d_ff:
             self.model_hyperparameters.d_ff = adjusted_hyperparams.d_ff
-        if self.model_hyperparameters.dropout_rate == ModelHyperparameters.dropout_rate:
+        if not self.model_hyperparameters._is_set_dropout_rate:
             self.model_hyperparameters.dropout_rate = adjusted_hyperparams.dropout_rate
-        if self.model_hyperparameters.max_seq_length == ModelHyperparameters.max_seq_length:
+        if not self.model_hyperparameters._is_set_max_seq_length:
             self.model_hyperparameters.max_seq_length = adjusted_hyperparams.max_seq_length
-        if self.model_hyperparameters.rel_pos_max_distance == ModelHyperparameters.rel_pos_max_distance:
+        if not self.model_hyperparameters._is_set_rel_pos_max_distance:
             self.model_hyperparameters.rel_pos_max_distance = adjusted_hyperparams.rel_pos_max_distance
 
     def reload_from_env(self):
@@ -370,8 +388,12 @@ class GlobalConfig:
             if isinstance(value, origin):
                 return value, True
             else:
+                # origin.__name__が存在しない場合に備えて安全にアクセス
+                origin_name = getattr(origin, "__name__", None)
+                if origin_name is None:
+                    origin_name = str(origin) or repr(origin)
                 logging.warning(
-                    f"Type mismatch in _coerce_value: {section}.{key} expects {origin.__name__}, "
+                    f"Type mismatch in _coerce_value: {section}.{key} expects {origin_name}, "
                     f"but got {type(value).__name__}. Skipping assignment."
                 )
                 return None, False
@@ -476,6 +498,11 @@ class GlobalConfig:
                 coerced_value, success = self._coerce_value(env_value, original_type, field_name, prefix.rstrip("_"))
                 if success:
                     setattr(obj, field_name, coerced_value)
+                    # ModelHyperparametersのフィールドが設定された場合、対応するis_setフラグを設定
+                    if isinstance(obj, ModelHyperparameters):
+                        is_set_flag_name = f"_is_set_{field_name}"
+                        if hasattr(obj, is_set_flag_name):
+                            setattr(obj, is_set_flag_name, True)
                 else:
                     logging.warning(
                         f"Could not convert environment variable {env_var_name}='{env_value}' to type {original_type}."
@@ -517,6 +544,11 @@ class GlobalConfig:
 
                                         if success:
                                             setattr(target_obj, key, coerced_value)
+                                            # ModelHyperparametersのフィールドが設定された場合、対応するis_setフラグを設定
+                                            if isinstance(target_obj, ModelHyperparameters):
+                                                is_set_flag_name = f"_is_set_{key}"
+                                                if hasattr(target_obj, is_set_flag_name):
+                                                    setattr(target_obj, is_set_flag_name, True)
                                         # 失敗時は既に警告がログに出力されている
             except Exception as e:
                 logging.warning(f"Failed to load config from {config_path}: {e}")

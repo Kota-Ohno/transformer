@@ -72,13 +72,30 @@ class Trainer:
                 # イテレータを作成して空かどうかをチェック
                 # 空チェックのみを行い、元のtrain_loaderを保持する
                 # （各エポックで新しいイテレータを作成できるようにする）
+                import itertools
                 iterator = iter(train_loader)
                 try:
                     # 最初のバッチを取得して空でないことを確認
-                    next(iterator)
-                    # 空でないことが確認できたので、元のtrain_loaderを保持
-                    # 各エポックでiter(train_loader)を呼び出すことで新しいイテレータが作成される
-                    self.train_loader = train_loader
+                    first_item = next(iterator)
+                    # 最初のアイテムを失わないように、最初のアイテムと残りのイテレータを結合
+                    # 各エポックで新しいイテレータを作成できるようにラッパーを作成
+                    class IterableWrapper:
+                        def __init__(self, loader, first_item, remaining_iterator):
+                            self.loader = loader
+                            self.first_item = first_item
+                            self.remaining_iterator = remaining_iterator
+                            self._first_iteration = True
+
+                        def __iter__(self):
+                            # 最初のイテレーションでは、保存した最初のアイテムと残りのイテレータを使用
+                            if self._first_iteration:
+                                self._first_iteration = False
+                                return itertools.chain([self.first_item], self.remaining_iterator)
+                            else:
+                                # 2回目以降は、元のloaderから新しいイテレータを作成
+                                return iter(self.loader)
+
+                    self.train_loader = IterableWrapper(train_loader, first_item, iterator)
                 except StopIteration:
                     error_msg = (
                         "train_loaderが空です。データが読み込まれていないか、"

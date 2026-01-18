@@ -704,8 +704,8 @@ def augment_dataset(train_data: List[Tuple[List[int], List[int]]],
     if techniques is None:
         techniques = ["masking", "deletion", "replacement", "permutation"]
 
-    # 決定論的なRNGを作成
-    rng = random.Random(seed) if seed is not None else random
+    # 決定論的なRNGを作成（seedがNoneの場合は非決定論的）
+    rng = random.Random(seed)
 
     # 拡張するサンプル数を計算
     num_samples = len(train_data)
