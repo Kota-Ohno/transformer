@@ -63,20 +63,17 @@ def setup_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # 既存のコンソールハンドラーをチェック（同じタイプとストリームのハンドラーが存在するか）
+    # 既存のコンソールハンドラーをチェック（sys.stdout をストリームに持つ StreamHandler が存在するか）
     formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
     has_console_handler = False
 
     for handler in root_logger.handlers[:]:  # コピーを作成してイテレート
-        # StreamHandlerでsys.stdoutを使用しているハンドラーを検出
-        if isinstance(handler, logging.StreamHandler):
-            if handler.stream is sys.stdout:
-                # 同じフォーマッタータイプかチェック（ColoredFormatterかどうか）
-                if isinstance(handler.formatter, ColoredFormatter):
-                    has_console_handler = True
-                    break
+        # StreamHandler かつ stream が sys.stdout のハンドラーが 1 つでもあれば追加は不要
+        if isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) is sys.stdout:
+            has_console_handler = True
+            break
 
-    # 既存のコンソールハンドラーがない場合のみ追加
+    # 既存のコンソールハンドラーがない場合のみ追加（ColoredFormatter を使用）
     if not has_console_handler:
         console = logging.StreamHandler(sys.stdout)
         console.setLevel(logging.INFO)

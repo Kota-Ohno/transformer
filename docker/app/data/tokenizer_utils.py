@@ -152,6 +152,16 @@ def train_and_load_sp_models(
                     logger.debug(f"削除しました: {file_path}")
                 except OSError as e:
                     logger.warning(f"ファイルの削除に失敗しました ({file_path}): {e}")
+        # ターゲットモデル側の部分的なアーティファクトも削除
+        tgt_files = glob.glob(f"{glob.escape(tgt_model_prefix)}*")
+        if tgt_files:
+            logger.info(f"部分的なターゲットモデルのアーティファクトを削除中: {tgt_files}")
+            for file_path in tgt_files:
+                try:
+                    os.remove(file_path)
+                    logger.debug(f"削除しました: {file_path}")
+                except OSError as e:
+                    logger.warning(f"ファイルの削除に失敗しました ({file_path}): {e}")
         raise
 
     # モデルをロード

@@ -497,7 +497,7 @@ def _setup_training_components(
     args: argparse.Namespace,
     train_loader: torch.utils.data.DataLoader,
     device: torch.device
-) -> Tuple[optim.Optimizer, nn.Module, WarmupScheduler, Optional[torch.cuda.amp.GradScaler]]:
+) -> Tuple[optim.Optimizer, nn.Module, WarmupScheduler, Optional[torch.amp.GradScaler]]:
     """
     トレーニングに必要なコンポーネントを設定します。
 
@@ -532,7 +532,7 @@ def _setup_training_components(
     # 勾配スケーラーの設定（CUDA環境でのみ使用）
     if device.type == 'cuda' and torch.cuda.is_available():
         try:
-            scaler = torch.cuda.amp.GradScaler()
+            scaler = torch.amp.GradScaler("cuda")
         except (RuntimeError, AssertionError) as e:
             logging.warning(f"GradScalerの作成に失敗しました: {e}。CPUモードで続行します。")
             scaler = None
