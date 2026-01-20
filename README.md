@@ -158,7 +158,7 @@ python predict.py
   python train.py --augment --augment-factor 0.4
   ```
 
-**注意**: `train.py --augment`を使用する場合は、事前にSentencePieceモデル（`models/sp_src.pth`、`models/sp_tgt.pth`）が存在する必要があります。これらは`text_tokenizer.py`を実行することで生成されます。
+**注意**: `train.py --augment`を使用する場合は、事前にSentencePieceモデル（`models/sp_src.model`、`models/sp_tgt.model`）が存在する必要があります。これらは`text_tokenizer.py`を実行することで生成されます。
 
 #### トレーニングオプション
 
@@ -175,7 +175,7 @@ python main.py --small-model
 python main.py --limit-samples 1000
 
 # train.py を使用したオンザフライデータ拡張を有効にしたトレーニング
-# 注意: 事前にSentencePieceモデル（models/sp_src.pth、models/sp_tgt.pth）が必要です
+# 注意: 事前にSentencePieceモデル（models/sp_src.model、models/sp_tgt.model）が必要です
 python train.py --augment --augment-factor 0.3
 
 # 最新のチェックポイントからトレーニングを再開

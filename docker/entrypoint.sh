@@ -92,7 +92,15 @@ else
             # "cuda:N"の形式の場合、Nが利用可能なGPU数より小さいか確認
             if echo "$value" | grep -qE '^cuda:[0-9]+$'; then
                 device_index=$(echo "$value" | sed 's/^cuda://')
-                available_gpus=$(python -c 'import torch; print(torch.cuda.device_count())')
+                # python呼び出しのエラーハンドリング
+                python_output=$(python -c 'import torch; print(torch.cuda.device_count())' 2>&1)
+                python_exit_code=$?
+                if [ $python_exit_code -ne 0 ]; then
+                    echo "ERROR: Failed to get GPU count for $var_name. Python error: $python_output" >&2
+                    echo "ERROR: var_name=$var_name, value=$value, device_index=$device_index" >&2
+                    exit 1
+                fi
+                available_gpus=$python_output
                 if [ "$available_gpus" -eq 0 ]; then
                     echo "ERROR: No GPUs available (available_gpus=0), but $var_name is set to '$value'. Please set it to 'cpu' or ensure GPUs are available." >&2
                     exit 1

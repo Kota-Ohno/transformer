@@ -147,10 +147,9 @@ def show_config_summary():
 
         # 欠けている属性がある場合はエラーログを出力してプロセスを停止
         if missing_attrs:
-            logging.error(f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}")
-            print(f"\n{Colors.ERROR}警告: 設定情報の一部が取得できませんでした。{Colors.RESET}")
-            print(f"{Colors.ERROR}欠けている属性: {', '.join(missing_attrs)}{Colors.RESET}\n")
-            raise RuntimeError(f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}")
+            error_msg = f"CONFIG構造が不完全です。欠けている属性: {', '.join(missing_attrs)}"
+            logging.error(f"{Colors.ERROR}{error_msg}{Colors.RESET}")
+            raise RuntimeError(error_msg)
 
         # 設定の概要を表示
         print("\n" + "="*50)

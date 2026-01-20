@@ -148,10 +148,17 @@ def save_checkpoint(
     # num_layersの優先順位: model_num_layers > model.encoder.layers > CONFIG
     if model_num_layers is not None:
         num_layers = model_num_layers
-    elif hasattr(model, 'encoder') and hasattr(model.encoder, 'layers'):
-        num_layers = len(model.encoder.layers)
     else:
-        num_layers = CONFIG.model_hyperparameters.num_layers
+        encoder = getattr(model, 'encoder', None)
+        layers = getattr(encoder, 'layers', None) if encoder is not None else None
+        if layers is not None:
+            try:
+                num_layers = len(layers)
+            except TypeError:
+                # layersがサイズを持たない場合はCONFIGにフォールバック
+                num_layers = CONFIG.model_hyperparameters.num_layers
+        else:
+            num_layers = CONFIG.model_hyperparameters.num_layers
 
     # 引数で渡された値があれば優先して使用（Noneを明示的にチェック）
     if model_hidden_size is not None:

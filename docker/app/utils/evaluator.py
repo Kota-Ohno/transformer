@@ -183,8 +183,8 @@ def evaluate(
     except Exception as e:
         logging.error(f"評価中にエラーが発生: {e}")
         logging.error(traceback.format_exc())
-        # 初期化済みの値を返す（avg_lossとbleu_scoreは既に初期化されている）
-        return avg_loss, bleu_score
+        # エラーを再発生させて呼び出し元で処理できるようにする
+        raise
 
     return avg_loss, bleu_score
 

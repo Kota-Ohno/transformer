@@ -10,7 +10,7 @@ nltk>=3.8.1,<4.0.0
 
 # Machine learning related packages
 scikit-learn>=1.5.0,<2.0.0
-torch>=2.0.0
+torch>=2.0.0,<3.0.0
 
 # Data handling related packages
 pandas>=2.1.0,<3.0.0
