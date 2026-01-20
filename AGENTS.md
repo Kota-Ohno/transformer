@@ -293,11 +293,22 @@ pytest --cov=docker/app/models/encoder --cov-report=html docker/app/models/test_
 # docker-composeを使用する場合
 docker-compose exec app pytest
 
-# docker runを使用する場合
+# docker runを使用する場合（bash/zsh用）
 docker run --rm \
   --gpus all \
   -v $(pwd)/docker/app:/src \
   -w /src \
+  transformer-app pytest
+```
+
+**注意**: 上記の例はbash/zsh用です。PowerShellを使用する場合は、以下のコマンドを使用してください：
+
+```powershell
+# docker runを使用する場合（PowerShell用）
+docker run --rm `
+  --gpus all `
+  -v ${PWD}/docker/app:/src `
+  -w /src `
   transformer-app pytest
 ```
 

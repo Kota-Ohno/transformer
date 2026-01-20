@@ -187,9 +187,10 @@ def normalize_text(text: str, lang: str, normalize_numeric: Optional[Union[str, 
     Args:
         text (str): 正規化するテキスト
         lang (str): 言語コード（'en_US' または 'ja_JP'）
-        normalize_numeric (str|None|False): 数字の正規化方法
-            - 文字列（デフォルト: '<NUM>'）: 数字列をその文字列に置き換え
-            - None または False: 数字を置き換えない
+        normalize_numeric: 数字の正規化方法。以下のいずれかを指定可能:
+            - True: 数字列を文字列'<NUM>'に置き換える（normalize_numericパラメータがTrueの場合）
+            - 文字列: 数字列をその文字列に置き換える（デフォルト: '<NUM>'）
+            - None または False: 数字を置き換えない（数値正規化を無効化）
             - 空文字列 ('') : 数字を置き換えない（数値正規化を無効化）
 
     Returns:
@@ -260,9 +261,10 @@ def tokenize_with_sentencepiece(
         text (str): トークナイズするテキスト
         sp_model: sentencepieceモデル
         lang (str, optional): 言語（正規化に使用）
-        normalize_numeric (str|None|False, optional): 数字の正規化方法
-            - 文字列（デフォルト: '<NUM>'）: 数字列をその文字列に置き換え
-            - None または False: 数字を置き換えない
+        normalize_numeric: 数字の正規化方法。以下のいずれかを指定可能:
+            - True: 数字列を文字列'<NUM>'に置き換える（normalize_numericパラメータがTrueの場合）
+            - 文字列: 数字列をその文字列に置き換える（デフォルト: '<NUM>'）
+            - None または False: 数字を置き換えない（数値正規化を無効化）
             - 空文字列 ('') : 数字を置き換えない（数値正規化を無効化）
 
     Returns:
