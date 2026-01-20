@@ -143,7 +143,7 @@ def train_and_load_sp_models(
     except Exception as err:
         logger.error(f"ターゲット言語のSentencePieceモデルのトレーニング中にエラーが発生しました (モデルパス: {tgt_model_prefix}): {err}")
         # ソースモデルが既に作成されている場合、部分的なアーティファクトを削除
-        src_files = glob.glob(f"{src_model_prefix}*")
+        src_files = glob.glob(f"{glob.escape(src_model_prefix)}*")
         if src_files:
             logger.info(f"部分的なソースモデルのアーティファクトを削除中: {src_files}")
             for file_path in src_files:
@@ -164,8 +164,8 @@ def train_and_load_sp_models(
     except Exception as e:
         logger.error(f"SentencePieceモデルのロード中にエラーが発生しました: {e}")
         # 生成されたアーティファクトを削除（トレーニング失敗時と同様のクリーンアップ）
-        src_files = glob.glob(f"{src_model_prefix}*")
-        tgt_files = glob.glob(f"{tgt_model_prefix}*")
+        src_files = glob.glob(f"{glob.escape(src_model_prefix)}*")
+        tgt_files = glob.glob(f"{glob.escape(tgt_model_prefix)}*")
         all_files = src_files + tgt_files
         if all_files:
             logger.info(f"部分的なモデルのアーティファクトを削除中: {all_files}")

@@ -71,6 +71,7 @@ git log -1 --pretty=format:"%s%n%b"
 ### 基本原則
 
 - Python 3.10以上が必須（mypy設定（`python_version = 3.10`）と一致させるため）
+  - **注意**: mypyはデフォルトで`python_version = 3.10`に設定されているため、開発環境がPython 3.11以降の場合は`mypy.ini`の`python_version`を実環境に合わせて調整する必要があります。
 - PythonコードはPEP 8に準拠
 - 型ヒントは必須（関数の引数、戻り値、クラスの属性など）
 - ドキュメント文字列（docstring）は必須
@@ -119,6 +120,8 @@ ignore_missing_imports = True
 [mypy-numpy.*]
 ignore_missing_imports = True
 ```
+
+**Pythonバージョン設定の調整**: 開発環境がPython 3.11以降の場合、`python_version`を実環境に合わせて変更してください（例: `python_version = 3.11`）。これにより、使用しているPythonバージョンに適した型チェックが行われます。
 
 ### Docstring形式
 
