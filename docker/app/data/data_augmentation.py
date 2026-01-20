@@ -195,9 +195,6 @@ class DataAugmentor:
                 logging.warning(f"token_ids内に整数でない要素があります: {token}")
                 continue
 
-        if len(valid_tokens) <= DEFAULT_MIN_SEQUENCE_LENGTH:
-            return valid_tokens
-
         result = []
 
         # 削除対象の位置をランダムに選択
@@ -205,7 +202,11 @@ class DataAugmentor:
             if rng.random() >= del_prob:  # 削除しない場合
                 result.append(valid_tokens[i])
 
-        return result if result else valid_tokens  # 空になった場合は元に戻す
+        # 削除後に最小長をチェック
+        if not result or len(result) < DEFAULT_MIN_SEQUENCE_LENGTH:
+            return valid_tokens
+
+        return result
 
     def token_replacement(self, token_ids: List[int], replace_prob: float = DEFAULT_REPLACEMENT_PROB, rng: random.Random = None,
                           tokenizer=None) -> List[int]:
