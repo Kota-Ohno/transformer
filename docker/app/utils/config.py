@@ -238,6 +238,8 @@ class GlobalConfig:
         2. config.jsonファイルから設定を読み込み（存在する場合）
         3. 環境変数から設定を読み込み（最高優先度）
         """
+        # スレッドセーフティのためのロックを初期化
+        self._reload_lock = threading.RLock()
         # GPUメモリに基づく設定調整を最初に実行（デフォルト値の設定）
         self.initialize_gpu_aware_defaults()
 
@@ -286,11 +288,13 @@ class GlobalConfig:
         このメソッドは、環境変数が動的に変更された後に呼び出すことで、
         設定を最新の環境変数の値に更新できます。
         __post_init__と同じバリデーションフローを実行します。
+        スレッドセーフです。
         """
-        # 環境変数からのオーバーライドとデバイス検証
-        self._apply_env_overrides()
-        # 環境変数適用後にバリデーションを再実行（__post_init__と同じフロー）
-        self.model_hyperparameters.validate()
+        with self._reload_lock:
+            # 環境変数からのオーバーライドとデバイス検証
+            self._apply_env_overrides()
+            # 環境変数適用後にバリデーションを再実行（__post_init__と同じフロー）
+            self.model_hyperparameters.validate()
 
     def _get_expected_type(self, obj: Any, key: str):
         """

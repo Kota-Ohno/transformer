@@ -248,10 +248,6 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
         # ValueError（無効なテンソル次元など）は再発生させる
         logging.exception("テキスト変換エラー（値エラー）")
         raise
-    except KeyError as e:
-        # KeyError（辞書に存在しないキー）はログに記録して再発生
-        logging.exception("テキスト変換エラー（キーエラー）")
-        raise
     except Exception as e:
         # その他の予期しないエラーはトレースバックをログに記録して再発生
         logging.exception("テキスト変換エラー")
