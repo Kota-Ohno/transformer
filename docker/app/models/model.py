@@ -82,29 +82,28 @@ class TranslationModel(nn.Module):
 
         # 現在のトレーニングモードを保存
         was_training = self.training
-
         try:
             self.eval()
             device = next(self.parameters()).device
             batch_size = src.size(0)
 
-            # エンコーダーでソースをエンコード
-            src_mask = self.make_src_mask(src)
-            enc_src = self.encoder(src, src_mask)
-
-            # デコーダーの初期入力（<s>トークン）
-            tgt = torch.full((batch_size, 1), start_token, dtype=torch.long, device=device)
-
-            # キャッシュの初期化
-            cache = None
-
-            # 生成されたトークンIDを格納
-            output_ids = []
-
-            # 各シーケンスの終了状態を追跡
-            finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
-
             with torch.no_grad():
+                # エンコーダーでソースをエンコード
+                src_mask = self.make_src_mask(src)
+                enc_src = self.encoder(src, src_mask)
+
+                # デコーダーの初期入力（<s>トークン）
+                tgt = torch.full((batch_size, 1), start_token, dtype=torch.long, device=device)
+
+                # キャッシュの初期化
+                cache = None
+
+                # 生成されたトークンIDを格納
+                output_ids = []
+
+                # 各シーケンスの終了状態を追跡
+                finished = torch.zeros(batch_size, dtype=torch.bool, device=device)
+
                 for _ in range(max_length):
                     # キャッシュを使用する場合は最後のトークンのみをデコーダーに渡す
                     if cache is not None:
@@ -148,12 +147,12 @@ class TranslationModel(nn.Module):
                         # キャッシュを使用しない場合は、全シーケンスに追加
                         tgt = torch.cat([tgt, next_token], dim=1)
 
-            # バッチごとにトークンIDを結合 [batch_size, tgt_len]
-            if len(output_ids) == 0:
-                # max_length == 0の場合、空のテンソルを作成
-                output_ids = torch.empty((batch_size, 0), dtype=torch.long, device=device)
-            else:
-                output_ids = torch.cat(output_ids, dim=1)
+                # バッチごとにトークンIDを結合 [batch_size, tgt_len]
+                if len(output_ids) == 0:
+                    # max_length == 0の場合、空のテンソルを作成
+                    output_ids = torch.empty((batch_size, 0), dtype=torch.long, device=device)
+                else:
+                    output_ids = torch.cat(output_ids, dim=1)
 
             return output_ids
         finally:

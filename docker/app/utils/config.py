@@ -557,6 +557,27 @@ class GlobalConfig:
                                                 if hasattr(target_obj, is_set_flag_name):
                                                     setattr(target_obj, is_set_flag_name, True)
                                         # 失敗時は既に警告がログに出力されている
+                            else:
+                                # values が dict でない場合は、section を GlobalConfig の直下属性として扱う
+                                target_obj = self
+                                key = section
+                                # 期待される型を取得
+                                expected_type = self._get_expected_type(target_obj, key)
+
+                                if expected_type is None:
+                                    # 型が特定できない場合は警告を出してスキップ
+                                    logging.warning(
+                                        f"Could not determine expected type for {section} in config.json. "
+                                        f"Skipping assignment."
+                                    )
+                                    continue
+
+                                # 型変換とバリデーション
+                                coerced_value, success = self._coerce_value(values, expected_type, key, section)
+
+                                if success:
+                                    setattr(target_obj, key, coerced_value)
+                                # 失敗時は既に警告がログに出力されている
             except Exception as e:
                 logging.warning(f"Failed to load config from {config_path}: {e}")
 
