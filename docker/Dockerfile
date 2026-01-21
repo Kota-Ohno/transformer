@@ -10,8 +10,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir -r requirements-gpu.txt && \
     python -m spacy download en_core_web_md && \
-    python -m spacy download ja_core_news_md && \
-    rm -f requirements.txt requirements-gpu.txt
+    python -m spacy download ja_core_news_md
 
 # アプリケーションコードをコピー
 COPY app/ .

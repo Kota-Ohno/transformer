@@ -82,11 +82,14 @@ def validate_token_ids(
             sample_indices = invalid_indices[:10].cpu().tolist()
             sample_values = invalid_values[:10].cpu().tolist()
 
+            # 次元ラベルを動的に生成（例: "dim0, dim1" for 2D, "dim0, dim1, dim2" for 3D）
+            dim_labels = ", ".join(f"dim{i}" for i in range(x.ndim))
+
             raise ValueError(
                 f"Invalid token IDs detected in {tensor_name}: {num_invalid} out-of-range values found. "
                 f"Valid range is [0, {vocab_size - 1}], "
                 f"but found values in range [{x_min}, {x_max}]. "
                 f"Input shape: {x.shape}, vocab_size: {vocab_size}. "
-                f"Sample invalid positions (batch_idx, seq_idx): {sample_indices}, "
+                f"Sample invalid positions ({dim_labels}): {sample_indices}, "
                 f"with values: {sample_values}"
             )
