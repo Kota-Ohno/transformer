@@ -366,6 +366,11 @@ def load_checkpoint(
         val_loss = checkpoint.get('val_loss', float('inf'))
         bleu_score = checkpoint.get('bleu_score', 0.0)
         model_config = checkpoint.get('model_config', {})
+        # メトリクス追跡フィールドを取得（save_checkpointで保存されたもの）
+        best_valid_loss = checkpoint.get('best_valid_loss', None)
+        best_bleu = checkpoint.get('best_bleu', None)
+        last_valid_loss = checkpoint.get('last_valid_loss', None)
+        last_bleu = checkpoint.get('last_bleu', None)
 
         if not is_trusted and not model_config:
             logging.warning(
@@ -379,7 +384,11 @@ def load_checkpoint(
             'epoch': epoch,
             'val_loss': val_loss,
             'bleu_score': bleu_score,
-            'model_config': model_config
+            'model_config': model_config,
+            'best_valid_loss': best_valid_loss,
+            'best_bleu': best_bleu,
+            'last_valid_loss': last_valid_loss,
+            'last_bleu': last_bleu
         }
 
     except FileNotFoundError:

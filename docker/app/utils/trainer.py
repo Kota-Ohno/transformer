@@ -165,13 +165,19 @@ class Trainer:
             }
             project_name = "transformer_training"
             wandb.init(project=project_name, config=wandb_config)
-            model_name = "standard"
-            wandb.run.name = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}_b{batch_size}"
-            wandb.run.summary["model_architecture"] = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}"
-            wandb.run.summary["input_vocab_size"] = len(self.input_vocab)
-            wandb.run.summary["output_vocab_size"] = len(self.output_vocab)
-            self.wandb_available = True
-            logging.info("Weights & Biasesのログ記録を開始しました")
+            # wandb.runがNoneでないことを確認してからアクセス
+            if wandb.run is not None:
+                model_name = "standard"
+                wandb.run.name = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}_b{batch_size}"
+                wandb.run.summary["model_architecture"] = f"{model_name}_h{CONFIG.model_hyperparameters.hidden_size}_l{CONFIG.model_hyperparameters.num_layers}"
+                wandb.run.summary["input_vocab_size"] = len(self.input_vocab)
+                wandb.run.summary["output_vocab_size"] = len(self.output_vocab)
+                self.wandb_available = True
+                logging.info("Weights & Biasesのログ記録を開始しました")
+            else:
+                logging.warning("wandb.init()が成功しましたが、wandb.runがNoneです。W&Bのログ記録は無効になります")
+                self.wandb_available = False
+                self.args.no_wandb = True
         except ImportError:
             logging.warning("wandbがインストールされていないため、W&Bのログ記録は無効になります")
             self.args.no_wandb = True
