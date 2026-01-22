@@ -593,7 +593,7 @@ class Trainer:
 
                 except Exception as e:
                     # 完全なトレースバックとコンテキストをログに記録
-                    logging.error(f"エポック {epoch+1} の処理中にエラーが発生しました (リトライ試行: {retry_attempt}/{self.max_epoch_retries})")
+                    logging.error(f"エポック {epoch+1} の処理中にエラーが発生しました (リトライ試行: {retry_attempt + 1}/{self.max_epoch_retries})")
                     logging.error(f"エラータイプ: {type(e).__name__}")
                     logging.error(f"エラーメッセージ: {str(e)}")
                     logging.error("完全なトレースバック:")
