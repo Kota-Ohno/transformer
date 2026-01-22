@@ -20,8 +20,9 @@ COPY entrypoint.sh /src/entrypoint.sh
 
 # 非rootユーザーの作成
 RUN groupadd -r transformer && \
-    useradd -r -g transformer -u 1000 transformer && \
+    useradd -r -m -g transformer -u 1000 transformer && \
     chown -R transformer:transformer /src && \
+    chown -R transformer:transformer /home/transformer && \
     chmod +x /src/entrypoint.sh
 
 # 環境変数の設定

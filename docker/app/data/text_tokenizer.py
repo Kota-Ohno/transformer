@@ -410,6 +410,7 @@ class TextTokenizer:
         lang: Optional[str] = None,
         is_source: bool = True,
         normalize_numeric: Union[str, None, bool] = "<NUM>",
+        batch_size: Optional[int] = None,
     ) -> List[List[int]]:
         """テキストをトークン化します（tokenize()のエイリアス、リストを返す）。
 
@@ -418,6 +419,7 @@ class TextTokenizer:
             lang: 言語コード。Noneの場合はis_sourceに基づいて決定。
             is_source: Trueの場合はソース言語、Falseの場合はターゲット言語として処理
             normalize_numeric: 数字の正規化方法。デフォルトは'<NUM>'。
+            batch_size: バッチサイズ。Noneの場合はCONFIGから取得。
 
         Returns:
             トークン化されたテキストのリスト（各要素はトークンIDのリスト）
@@ -428,4 +430,5 @@ class TextTokenizer:
             is_source=is_source,
             normalize_numeric=normalize_numeric,
             return_tensors=False,
+            batch_size=batch_size,
         )

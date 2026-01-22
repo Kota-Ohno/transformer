@@ -75,8 +75,16 @@ def download_nltk_resources(
         for resource in all_resources:
             try:
                 logging.info(f"nltk resource {resource} をダウンロードしています...")
-                nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
-                logging.info(f"nltk resource {resource} のダウンロードが完了しました")
+                download_result = nltk.download(resource, download_dir=nltk_data_dir, quiet=True)
+                if not download_result:
+                    error_msg = f"nltk resource '{resource}' のダウンロードに失敗しました"
+                    logging.error(error_msg)
+                    if resource in critical_resources:
+                        raise RuntimeError(error_msg)
+                    else:
+                        logging.warning(f"非クリティカルリソース '{resource}' のダウンロード失敗を無視します")
+                else:
+                    logging.info(f"nltk resource {resource} のダウンロードが完了しました")
             except Exception as e:
                 exception_traceback = traceback.format_exc()
                 if resource in critical_resources:
