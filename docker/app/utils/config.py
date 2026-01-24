@@ -84,6 +84,15 @@ class ModelHyperparameters:
     GlobalConfigの初期化時に、GPUメモリに基づいて自動的に調整されます。
     環境変数やconfig.jsonファイルでオーバーライド可能です。
     """
+    # クラス定数としてデフォルト値を定義
+    DEFAULT_HIDDEN_SIZE: int = field(default=512, init=False, repr=False)
+    DEFAULT_NUM_HEADS: int = field(default=8, init=False, repr=False)
+    DEFAULT_NUM_LAYERS: int = field(default=6, init=False, repr=False)
+    DEFAULT_D_FF: int = field(default=2048, init=False, repr=False)
+    DEFAULT_DROPOUT_RATE: float = field(default=0.1, init=False, repr=False)
+    DEFAULT_MAX_SEQ_LENGTH: int = field(default=512, init=False, repr=False)
+    DEFAULT_REL_POS_MAX_DISTANCE: int = field(default=128, init=False, repr=False)
+
     hidden_size: int = 512
     num_heads: int = 8
     num_layers: int = 6
@@ -103,7 +112,11 @@ class ModelHyperparameters:
 
     def __post_init__(self) -> None:
         """
-        ハイパーパラメータのバリデーションを実行します。
+        ハイパーパラメータのバリデーションと_is_set_*フラグの設定を実行します。
+
+        コンストラクタ引数でデフォルト値と異なる値が渡された場合、
+        対応する_is_set_*フラグをTrueに設定します。
+        これにより、initialize_gpu_aware_defaults()がユーザー指定値を検出できます。
 
         Transformerモデルの制約として、hidden_sizeはnum_headsで割り切れる必要があります。
         この制約を満たさない場合、モデル初期化時にエラーが発生するため、
@@ -113,6 +126,22 @@ class ModelHyperparameters:
             ValueError: hidden_sizeがnum_headsで割り切れない場合。
                 エラーメッセージにはhidden_sizeとnum_headsの値が含まれます。
         """
+        # コンストラクタ引数がデフォルト値と異なる場合、_is_set_*フラグを設定
+        if self.hidden_size != self.DEFAULT_HIDDEN_SIZE:
+            self._is_set_hidden_size = True
+        if self.num_heads != self.DEFAULT_NUM_HEADS:
+            self._is_set_num_heads = True
+        if self.num_layers != self.DEFAULT_NUM_LAYERS:
+            self._is_set_num_layers = True
+        if self.d_ff != self.DEFAULT_D_FF:
+            self._is_set_d_ff = True
+        if self.dropout_rate != self.DEFAULT_DROPOUT_RATE:
+            self._is_set_dropout_rate = True
+        if self.max_seq_length != self.DEFAULT_MAX_SEQ_LENGTH:
+            self._is_set_max_seq_length = True
+        if self.rel_pos_max_distance != self.DEFAULT_REL_POS_MAX_DISTANCE:
+            self._is_set_rel_pos_max_distance = True
+
         self.validate()
 
     def validate(self) -> None:

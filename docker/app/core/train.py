@@ -79,7 +79,7 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument('--grad-accum-steps', type=int, default=CONFIG.training_config.gradient_accumulation_steps,
                       help='勾配蓄積ステップ数')
     parser.add_argument('--verbose-mask', action='store_true', help='マスクの詳細ログを表示')
-    parser.add_argument('--limit-samples', type=int, default=0, help='使用するサンプル数を制限')
+    parser.add_argument('--limit-samples', type=int, default=None, help='使用するサンプル数を制限')
     parser.add_argument('--jit', action='store_true', help='JITコンパイルを使用')
     parser.add_argument('--num-workers', type=int, default=DEFAULT_NUM_WORKERS,
                        help='データロードに使用するワーカー数')
@@ -135,7 +135,7 @@ def _apply_fast_mode_settings(args: argparse.Namespace) -> None:
     if args.fast:
         logging.info("高速トレーニングモードが有効です - 精度よりも速度を優先します")
         # データサンプル数の制限
-        if args.limit_samples == 0:
+        if args.limit_samples is None:
             args.limit_samples = FAST_MODE_DEFAULT_SAMPLES
         # エポック数の制限
         if args.epochs > FAST_MODE_MAX_EPOCHS:
@@ -178,7 +178,7 @@ def _load_and_prepare_data(
         raise ValueError(error_msg)
 
     # データサンプル数の制限（高速実験用）
-    if args.limit_samples > 0 and len(train_token_ids) > args.limit_samples:
+    if args.limit_samples is not None and args.limit_samples > 0 and len(train_token_ids) > args.limit_samples:
         logging.info(f"トレーニングサンプル数を制限します: {len(train_token_ids)} → {args.limit_samples}")
         import random
         # 再現性のためシードを設定してからシャッフル
@@ -585,7 +585,7 @@ def main(argv: Optional[List[str]] = None) -> None:
         logging.info("環境変数から高速モードを有効化しました")
 
     limit_samples_env = os.environ.get('TRANSFORMER_LIMIT_SAMPLES')
-    if limit_samples_env and args.limit_samples == 0:
+    if limit_samples_env and args.limit_samples is None:
         try:
             args.limit_samples = int(limit_samples_env)
             logging.info(f"環境変数からサンプル数制限を設定しました: {args.limit_samples}")

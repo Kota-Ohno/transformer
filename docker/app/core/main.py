@@ -192,7 +192,7 @@ def main() -> int:
                         help='高速モード: トレーニング時間を短縮するための最適化設定を適用します')
     parser.add_argument('--small-model', action='store_true',
                         help='小さいモデルを使用: メモリ使用量を削減し、トレーニング速度を向上させます')
-    parser.add_argument('--limit-samples', type=non_negative_int, default=0,
+    parser.add_argument('--limit-samples', type=non_negative_int, default=None,
                         help='トレーニングに使用するサンプル数を制限します（開発用、0以上）')
     args, unknown_args = parser.parse_known_args()
 
@@ -218,7 +218,7 @@ def main() -> int:
         print(f"{Colors.SUCCESS}小さいモデルを使用: hidden_size=256, heads=4, layers=4{Colors.RESET}")
 
     # データサンプル数制限の設定
-    if args.limit_samples > 0:
+    if args.limit_samples is not None and args.limit_samples > 0:
         os.environ['TRANSFORMER_LIMIT_SAMPLES'] = str(args.limit_samples)
         print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
 
@@ -249,9 +249,12 @@ if __name__ == "__main__":
         rc = main()
         sys.exit(rc)
     except KeyboardInterrupt:
-        # setup_logging()が呼ばれているため、logging.info()を使用可能
-        print("ユーザーによって中断されました")
-        logging.info("ユーザーによって中断されました")
+        # ロギングが設定されているか確認し、適切な出力方法を選択
+        msg = "ユーザーによって中断されました"
+        if logging.getLogger().hasHandlers():
+            logging.info(msg)
+        else:
+            print(msg)
         sys.exit(130)  # SIGINT の標準的な終了コード
     except Exception as e:
         logging.error(f"エラーが発生しました: {e}")
