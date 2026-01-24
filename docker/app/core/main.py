@@ -63,22 +63,17 @@ def setup_logging():
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
 
-    # 既存のコンソールハンドラーをチェック（sys.stdout をストリームに持つ StreamHandler が存在するか）
-    formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
-    has_console_handler = False
-
+    # 既存のハンドラーを削除（basicConfigなどで追加されたstderrハンドラーを含む）
+    # これにより、重複したハンドラーを防ぐ
     for handler in root_logger.handlers[:]:  # コピーを作成してイテレート
-        # StreamHandler かつ stream が sys.stdout のハンドラーが 1 つでもあれば追加は不要
-        if isinstance(handler, logging.StreamHandler) and getattr(handler, "stream", None) is sys.stdout:
-            has_console_handler = True
-            break
+        root_logger.removeHandler(handler)
 
-    # 既存のコンソールハンドラーがない場合のみ追加（ColoredFormatter を使用）
-    if not has_console_handler:
-        console = logging.StreamHandler(sys.stdout)
-        console.setLevel(logging.INFO)
-        console.setFormatter(formatter)
-        root_logger.addHandler(console)
+    # 新しいコンソールハンドラーを追加（ColoredFormatter を使用）
+    formatter = ColoredFormatter('%(asctime)s - %(levelname)s - %(message)s')
+    console = logging.StreamHandler(sys.stdout)
+    console.setLevel(logging.INFO)
+    console.setFormatter(formatter)
+    root_logger.addHandler(console)
 
 def check_gpu_environment():
     """GPU環境の情報を収集してログに記録"""
@@ -251,12 +246,13 @@ def main() -> int:
 
 if __name__ == "__main__":
     # 早期にロギングを設定（setup_logging()が呼ばれる前にKeyboardInterruptが発生する可能性があるため）
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    # setup_logging()が既存のハンドラーを削除するため、basicConfigは呼ばない
+    setup_logging()
     try:
         rc = main()
         sys.exit(rc)
     except KeyboardInterrupt:
-        # setup_logging()が呼ばれていない可能性があるため、print()も使用
+        # setup_logging()が呼ばれているため、logging.info()を使用可能
         print("ユーザーによって中断されました")
         logging.info("ユーザーによって中断されました")
         sys.exit(130)  # SIGINT の標準的な終了コード

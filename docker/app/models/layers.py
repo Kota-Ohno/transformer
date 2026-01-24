@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+import numbers
 
 class PositionalEncoding(nn.Module):
     """位置エンコーディング"""
@@ -49,7 +50,9 @@ class PositionalEncoding(nn.Module):
             位置情報が加算されたテンソル [batch_size, seq_len, d_model]
         """
         # offsetの型と非負チェック
-        if type(offset) is not int:
+        # isinstance(offset, numbers.Integral)を使用してnumpy/torch整数スカラーも受け入れる
+        # ただし、boolは明示的に除外（boolはnumbers.Integralのサブクラスだが、整数として扱うべきではない）
+        if isinstance(offset, bool) or not isinstance(offset, numbers.Integral):
             raise TypeError(f"offset must be an integer, got {type(offset).__name__}")
         if offset < 0:
             raise ValueError(f"offset must be non-negative, got {offset}")

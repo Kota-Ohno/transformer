@@ -128,11 +128,16 @@ class Trainer:
                     # DataLoaderのdataset属性からbatch_sizeを推論
                     if hasattr(self.train_loader, 'dataset') and hasattr(self.train_loader.dataset, '__len__'):
                         dataset_len = len(self.train_loader.dataset)
-                        num_batches = len(self.train_loader)
-                        if num_batches > 0:
-                            batch_size = dataset_len // num_batches
+                        # IterableDatasetの場合は__len__が存在しない可能性があるため、明示的にチェック
+                        if hasattr(self.train_loader, '__len__'):
+                            num_batches = len(self.train_loader)
+                            if num_batches > 0:
+                                batch_size = dataset_len // num_batches
+                            else:
+                                batch_size = 1
                         else:
-                            batch_size = 1
+                            # __len__が存在しない場合（IterableDataset）は、CONFIGから取得
+                            batch_size = CONFIG.training_config.batch_size if hasattr(CONFIG.training_config, 'batch_size') else 1
                     else:
                         batch_size = CONFIG.training_config.batch_size if hasattr(CONFIG.training_config, 'batch_size') else 1
                 except Exception as e:

@@ -137,7 +137,7 @@ Googleスタイルのdocstringを使用してください。以下のセクシ�
 以下は、PEP 8に準拠し、型ヒントとGoogleスタイルのdocstringを含む関数の例です：
 
 ```python
-from typing import List, Optional
+from typing import Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor

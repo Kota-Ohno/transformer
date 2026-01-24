@@ -408,8 +408,12 @@ class GlobalConfig:
         # 基本型への変換を試みる
         try:
             if expected_type is int:
+                # boolは明示的に除外（isinstance(True, int)はTrueだが、意図的な変換が必要）
+                if isinstance(value, bool):
+                    # boolをintに明示的に変換（True -> 1, False -> 0）
+                    return int(value), True
                 # 文字列の数字からintへの変換（符号付き整数をサポート）
-                if isinstance(value, str):
+                elif isinstance(value, str):
                     try:
                         return int(value.strip()), True
                     except ValueError:
