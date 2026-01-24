@@ -665,16 +665,58 @@ class Trainer:
                 pass
 
         final_model_dir = "models"
-        os.makedirs(final_model_dir, exist_ok=True)
-        final_model_path = os.path.join(final_model_dir, f"final_model_epoch_{last_epoch}.pt")
-        torch.save({
-            'model_state_dict': self.model.state_dict(),
-            'input_vocab': self.input_vocab,
-            'output_vocab': self.output_vocab,
-            'config': {
-                'hidden_size': CONFIG.model_hyperparameters.hidden_size,
-                'num_heads': CONFIG.model_hyperparameters.num_heads,
-                'num_layers': CONFIG.model_hyperparameters.num_layers
-            }
-        }, final_model_path)
-        logging.info(f"最終モデルを保存しました: {final_model_path}")
+        final_model_path = ""
+        try:
+            os.makedirs(final_model_dir, exist_ok=True)
+            final_model_path = os.path.join(
+                final_model_dir, f"final_model_epoch_{last_epoch}.pt"
+            )
+            torch.save({
+                'model_state_dict': self.model.state_dict(),
+                'input_vocab': self.input_vocab,
+                'output_vocab': self.output_vocab,
+                'config': {
+                    'hidden_size': CONFIG.model_hyperparameters.hidden_size,
+                    'num_heads': CONFIG.model_hyperparameters.num_heads,
+                    'num_layers': CONFIG.model_hyperparameters.num_layers
+                }
+            }, final_model_path)
+            logging.info(f"最終モデルを保存しました: {final_model_path}")
+        except OSError as e:
+            logging.exception(
+                f"最終モデルの保存に失敗しました (OSError): "
+                f"path={final_model_path}, epoch={last_epoch}, "
+                f"config={{hidden_size={CONFIG.model_hyperparameters.hidden_size}, "
+                f"num_heads={CONFIG.model_hyperparameters.num_heads}, "
+                f"num_layers={CONFIG.model_hyperparameters.num_layers}}}. "
+                f"Error: {e}"
+            )
+            # フォールバック: 一時ディレクトリに保存を試みる
+            try:
+                import tempfile
+                fallback_dir = tempfile.gettempdir()
+                fallback_path = os.path.join(
+                    fallback_dir, f"final_model_epoch_{last_epoch}.pt"
+                )
+                torch.save({
+                    'model_state_dict': self.model.state_dict(),
+                    'input_vocab': self.input_vocab,
+                    'output_vocab': self.output_vocab,
+                    'config': {
+                        'hidden_size': CONFIG.model_hyperparameters.hidden_size,
+                        'num_heads': CONFIG.model_hyperparameters.num_heads,
+                        'num_layers': CONFIG.model_hyperparameters.num_layers
+                    }
+                }, fallback_path)
+                logging.warning(
+                    f"フォールバック先に最終モデルを保存しました: {fallback_path}"
+                )
+            except Exception as fallback_e:
+                logging.error(
+                    f"フォールバック保存も失敗しました: {fallback_e}"
+                )
+        except Exception as e:
+            logging.exception(
+                f"最終モデルの保存中に予期しないエラーが発生しました: "
+                f"path={final_model_path}, epoch={last_epoch}. Error: {e}"
+            )
