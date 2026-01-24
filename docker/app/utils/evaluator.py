@@ -284,14 +284,10 @@ def decode_for_bleu(
                 break
             target_clean.append(id2word.get(token_id, '<unk>'))
 
-        # 空の場合は空リストとして正規化
-        pred_tokens = pred_clean if pred_clean else []
-        target_tokens = target_clean if target_clean else []
-
         # 両方が非空の場合のみ追加（BLEUスコアの計算に影響するため）
-        if pred_tokens and target_tokens:
-            predicted_sentences.append(pred_tokens)  # List[List[str]]: 各予測文はトークンのリスト
-            target_sentences.append([target_tokens])  # List[List[List[str]]]: BLEUの形式に合わせて参照訳をリストのリストに
+        if pred_clean and target_clean:
+            predicted_sentences.append(pred_clean)  # List[List[str]]: 各予測文はトークンのリスト
+            target_sentences.append([target_clean])  # List[List[List[str]]]: BLEUの形式に合わせて参照訳をリストのリストに
         else:
             excluded_empty_pairs += 1
 
