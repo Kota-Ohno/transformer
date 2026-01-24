@@ -507,8 +507,9 @@ class Trainer:
             # retry_attemptは0から始まり、各リトライでインクリメントされる
             while retry_attempt < self.max_epoch_retries and not epoch_completed:
                 try:
-                    last_epoch = epoch + 1
                     valid_loss, bleu_score = self._process_epoch(epoch)
+                    # エポックが正常に完了した後にlast_epochを更新
+                    last_epoch = epoch + 1
 
                     # 最良モデルの更新
                     is_best = False

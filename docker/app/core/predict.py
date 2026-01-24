@@ -400,6 +400,9 @@ def translate(model: TranslationModel, input_tensor: torch.Tensor, output_vocab:
                     seq_len,
                     getattr(CONFIG.model_hyperparameters, "max_seq_length", seq_len),
                 )
+                # OOMが発生したので、リトライ時は縮小したチャンクサイズを使用
+                min_chunk_size = DEFAULT_MIN_CHUNK_SIZE
+                reduced_initial = max(min_chunk_size, initial_chunk_size // 2)
                 try:
                     return _chunked_predict(
                         input_tensor,
@@ -407,7 +410,8 @@ def translate(model: TranslationModel, input_tensor: torch.Tensor, output_vocab:
                         is_cuda=is_cuda,
                         start_token_id=start_token_id,
                         end_token_id=end_token_id,
-                        initial_chunk_size=initial_chunk_size
+                        initial_chunk_size=reduced_initial,
+                        min_chunk_size=min_chunk_size
                     )
                 except Exception as retry_err:
                     logging.error(

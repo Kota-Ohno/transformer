@@ -112,7 +112,7 @@ def evaluate(
                 # 推論時間計測
                 inference_start = time.time()
                 # 混合精度を使用（FP16/BF16）
-                with torch.cuda.amp.autocast(enabled=device.type=='cuda'):
+                with torch.amp.autocast(device_type='cuda', enabled=device.type=='cuda'):
                     output = model(src, tgt_input)
                 inference_time = time.time() - inference_start
                 total_inference_time += inference_time
