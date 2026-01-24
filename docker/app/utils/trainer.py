@@ -657,9 +657,10 @@ class Trainer:
         if not self.args.no_wandb and self.wandb_available:
             try:
                 import wandb
-                wandb.run.summary["best_val_loss"] = self.best_valid_loss
-                wandb.run.summary["best_bleu_score"] = self.best_bleu
-                wandb.finish()
+                if hasattr(wandb, "run") and wandb.run is not None:
+                    wandb.run.summary["best_val_loss"] = self.best_valid_loss
+                    wandb.run.summary["best_bleu_score"] = self.best_bleu
+                    wandb.finish()
             except (ImportError, AttributeError):
                 pass
 
