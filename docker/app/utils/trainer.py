@@ -132,7 +132,7 @@ class Trainer:
                         if hasattr(self.train_loader, '__len__'):
                             num_batches = len(self.train_loader)
                             if num_batches > 0:
-                                batch_size = dataset_len // num_batches
+                                batch_size = max(1, dataset_len // num_batches)
                             else:
                                 batch_size = 1
                         else:

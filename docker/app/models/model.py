@@ -108,7 +108,7 @@ class TranslationModel(nn.Module):
                     # キャッシュを使用する場合は最後のトークンのみをデコーダーに渡す
                     if cache is not None:
                         # キャッシュがある場合は、最後のトークンのみを使用
-                        decoder_input = tgt[:, -1:] if tgt.size(1) > 0 else tgt
+                        decoder_input = tgt[:, -1:]
                         tgt_mask = self.make_tgt_mask(decoder_input)
                         decoder_output, cache = self.decoder(decoder_input, enc_src, tgt_mask, src_mask, cache)
                     else:
