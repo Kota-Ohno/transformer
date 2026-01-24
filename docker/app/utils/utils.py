@@ -3,7 +3,7 @@ import nltk
 import os
 import logging
 import traceback
-from typing import Dict, Any, Set, Optional
+from typing import Dict, Any, Set, Optional, Union, List
 
 # constantsモジュールの安全なインポート
 _constants_available = False
@@ -191,7 +191,7 @@ def create_tgt_mask(tgt: torch.Tensor, tgt_pad_idx: int) -> torch.Tensor:
 # --- ここまでマスク生成関数 ---
 
 
-def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = False) -> str:
+def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = False) -> Union[str, List[str]]:
     """
     トークンIDを文字列に変換します
 
@@ -201,20 +201,21 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
         skip_special: 特殊トークンをスキップするかどうか
 
     Returns:
-        変換されたテキスト
+        変換されたテキスト。1次元の場合は文字列、2次元（バッチ）の場合は文字列のリスト
     """
     _maybe_log_constants_import_failure()
     try:
         # テンソルの場合はリストに変換
+        is_batch = False
         if isinstance(ids, torch.Tensor):
             if ids.ndim == 1:
                 # 1次元テンソル: そのままリストに変換
                 ids = ids.cpu().tolist()
             elif ids.ndim == 2:
-                # 2次元テンソル: フラット化して1次元リストに変換
-                # バッチ構造は保持せず、すべてのトークンIDを1つのリストにまとめる
+                # 2次元テンソル: バッチ構造を保持
                 ids_2d = ids.cpu().tolist()
-                ids = [token_id for batch in ids_2d for token_id in batch]
+                ids = ids_2d  # リストのリストとして保持
+                is_batch = True
             else:
                 # 3次元以上のテンソル: 予期しない次元数
                 raise ValueError(
@@ -222,9 +223,39 @@ def convert_ids_to_text(ids: Any, id2word: Dict[int, str], skip_special: bool = 
                     f"1次元（単一シーケンス）または2次元（バッチ）のみサポートされています。"
                 )
         elif isinstance(ids, list) and len(ids) > 0 and isinstance(ids[0], list):
-            # リストのリスト（2D構造）の場合もフラット化
-            ids = [token_id for batch in ids for token_id in batch]
+            # リストのリスト（2D構造）の場合: バッチ構造を保持
+            is_batch = True
 
+        # バッチ処理の場合
+        if is_batch:
+            # 各シーケンスを個別に処理
+            result_strings = []
+            for sequence_ids in ids:
+                # IDから単語に変換
+                words = []
+                for idx in sequence_ids:
+                    # 辞書に存在するかチェックしてからアクセス（KeyErrorを回避）
+                    try:
+                        word = id2word[idx]
+                    except KeyError:
+                        # 辞書にない場合はスキップ
+                        continue
+                    # 特殊トークンをスキップする場合
+                    if skip_special:
+                        # constantsモジュールが利用可能でSPECIAL_TOKENS属性が存在する場合のみチェック
+                        if _constants_available and hasattr(constants, 'SPECIAL_TOKENS'):
+                            if word in constants.SPECIAL_TOKENS:
+                                continue
+                        else:
+                            # フォールバック: 一般的な特殊トークンをチェック
+                            if word in {'<pad>', '<unk>', '<s>', '</s>'}:
+                                continue
+                    words.append(word)
+                # 単語を連結して文字列に変換
+                result_strings.append(' '.join(words))
+            return result_strings
+
+        # 単一シーケンス処理の場合
         # IDから単語に変換
         words = []
         for idx in ids:

@@ -100,6 +100,18 @@ else
                     echo "ERROR: var_name=$var_name, value=$value, device_index=$device_index" >&2
                     exit 1
                 fi
+                # python_outputが数値のみかどうかを検証
+                if ! echo "$python_output" | grep -qE '^[0-9]+$'; then
+                    echo "ERROR: Invalid GPU count output for $var_name. Expected numeric value, got: '$python_output'" >&2
+                    echo "ERROR: var_name=$var_name, value=$value, device_index=$device_index" >&2
+                    exit 1
+                fi
+                # device_indexが数値かどうかを検証
+                if ! echo "$device_index" | grep -qE '^[0-9]+$'; then
+                    echo "ERROR: Invalid device index for $var_name. Expected numeric value, got: '$device_index'" >&2
+                    echo "ERROR: var_name=$var_name, value=$value" >&2
+                    exit 1
+                fi
                 available_gpus=$python_output
                 if [ "$available_gpus" -eq 0 ]; then
                     echo "ERROR: No GPUs available (available_gpus=0), but $var_name is set to '$value'. Please set it to 'cpu' or ensure GPUs are available." >&2

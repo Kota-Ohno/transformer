@@ -208,10 +208,17 @@ def create_data_loader(dataset_or_data: Any, batch_size: int, pad_token_id: Opti
     """
     # トークンIDのリストを受け取った場合、データセットに変換
     if isinstance(dataset_or_data, list):
-        # 入力と出力を同じにする（オートエンコーダーのようなアプローチ）
-        # 警告: この動作は暗黙的です。入力と出力を分けたい場合は、
-        # MyDatasetインスタンスを直接作成して渡してください。
-        dataset = set_data(dataset_or_data, dataset_or_data)
+        # 2タプルのリストかどうかをチェック
+        if len(dataset_or_data) > 0 and all(
+            isinstance(item, (list, tuple)) and len(item) == 2
+            for item in dataset_or_data
+        ):
+            # (X, Y)タプルのリストの場合、XとYに分割
+            x_list, y_list = zip(*dataset_or_data)
+            dataset = set_data(list(x_list), list(y_list))
+        else:
+            # プレーンなリストの場合、X=Yとして扱う（オートエンコーダー）
+            dataset = set_data(dataset_or_data, dataset_or_data)
     else:
         # すでにデータセットインスタンスの場合はそのまま使用
         dataset = dataset_or_data
