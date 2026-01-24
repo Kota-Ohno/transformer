@@ -32,17 +32,17 @@ def _validate_and_filter_texts(
             f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
         )
 
-    # 単一の文字列をリストに変換
-    if isinstance(texts, str):
-        texts = [texts]
-
-    # イテラブルでない場合はエラー
+    # イテラブルでない場合はエラー（文字列は特別に扱うため、このチェックの後で変換）
     if not hasattr(texts, "__iter__"):
         raise ValueError(
             f"{param_name} はイテラブル（リストなど）である必要があります。"
             f"現在の型: {type(texts).__name__}。"
             f"文字列のリストを渡してください。例: ['text1', 'text2', ...]"
         )
+
+    # 単一の文字列をリストに変換
+    if isinstance(texts, str):
+        texts = [texts]
 
     # リストに変換して要素を確認
     texts = list(texts)

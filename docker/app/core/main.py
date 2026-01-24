@@ -245,9 +245,6 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
-    # 早期にロギングを設定（setup_logging()が呼ばれる前にKeyboardInterruptが発生する可能性があるため）
-    # setup_logging()が既存のハンドラーを削除するため、basicConfigは呼ばない
-    setup_logging()
     try:
         rc = main()
         sys.exit(rc)
