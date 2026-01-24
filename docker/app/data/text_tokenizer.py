@@ -326,6 +326,9 @@ class TextTokenizer:
                             if not self._pad_warning_logged:
                                 logger.warning(
                                     "pad_idが取得できなかったため、eos_idをパディングトークンとして使用します。"
+                                    "注意: トレーニング時やアテンション計算時に、パディングトークンを注意マスクで除外するか、"
+                                    "SentencePieceモデルを訓練する際に明示的に<pad>トークンを追加してください。"
+                                    "可能な場合は、pad_idを明示的にオーバーライドすることを推奨します。"
                                 )
                                 self._pad_warning_logged = True
 

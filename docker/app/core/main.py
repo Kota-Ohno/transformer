@@ -250,10 +250,14 @@ def main() -> int:
     return 0
 
 if __name__ == "__main__":
+    # 早期にロギングを設定（setup_logging()が呼ばれる前にKeyboardInterruptが発生する可能性があるため）
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     try:
         rc = main()
         sys.exit(rc)
     except KeyboardInterrupt:
+        # setup_logging()が呼ばれていない可能性があるため、print()も使用
+        print("ユーザーによって中断されました")
         logging.info("ユーザーによって中断されました")
         sys.exit(130)  # SIGINT の標準的な終了コード
     except Exception as e:

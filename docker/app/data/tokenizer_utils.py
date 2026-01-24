@@ -135,6 +135,17 @@ def train_and_load_sp_models(
         train_sentencepiece(train_texts_src, src_model_prefix)
     except Exception as err:
         logger.error(f"ソース言語のSentencePieceモデルのトレーニング中にエラーが発生しました (モデルパス: {src_model_prefix}): {err}")
+        # 部分的なアーティファクトを削除
+        src_files = glob.glob(f"{glob.escape(src_model_prefix)}*")
+        if src_files:
+            logger.info(f"部分的なソースモデルのアーティファクトを削除中: {src_files}")
+            for file_path in src_files:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        logger.debug(f"削除しました: {file_path}")
+                except OSError as e:
+                    logger.error(f"ファイルの削除に失敗しました ({file_path}): {e}")
         raise
 
     logger.info("ターゲット言語のSentencePieceモデルをトレーニング中...")

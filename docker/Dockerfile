@@ -19,8 +19,8 @@ COPY app/ .
 COPY entrypoint.sh /src/entrypoint.sh
 
 # 非rootユーザーの作成
-RUN groupadd -r transformer && \
-    useradd -r -m -g transformer -u 1000 transformer && \
+RUN groupadd transformer && \
+    useradd -m -g transformer -u 1000 transformer && \
     chown -R transformer:transformer /src && \
     chown -R transformer:transformer /home/transformer && \
     chmod +x /src/entrypoint.sh
