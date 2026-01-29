@@ -590,8 +590,8 @@ class Trainer:
                         model_num_layers=CONFIG.model_hyperparameters.num_layers,
                         best_valid_loss=self.best_valid_loss,
                         best_bleu=self.best_bleu,
-                        last_valid_loss=self.last_valid_loss,
-                        last_bleu=self.last_bleu
+                        last_valid_loss=interrupt_valid_loss,
+                        last_bleu=interrupt_bleu_score
                     )
                     epoch_completed = True
                     should_stop_training = True

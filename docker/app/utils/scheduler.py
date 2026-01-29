@@ -66,7 +66,9 @@ class WarmupScheduler(_BaseScheduler):
             lrs = []
             for base_lr in self.base_lrs:
                 warmup_end_lr = base_lr * warmup_end_scale
+                # warmup_end_lrがmin_lrより低い場合、一時的なLR増加を防ぐためにクランプ
+                warmup_end_lr_clamped = max(self.min_lr, warmup_end_lr)
                 cos_value = math.cos(progress * math.pi)
-                lr = self.min_lr + 0.5 * (warmup_end_lr - self.min_lr) * (1 + cos_value)
+                lr = self.min_lr + 0.5 * (warmup_end_lr_clamped - self.min_lr) * (1 + cos_value)
                 lrs.append(max(self.min_lr, lr))
             return lrs
