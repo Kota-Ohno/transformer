@@ -195,7 +195,14 @@ def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
 
     Returns:
         dict: サイズ調整後の新しいキャッシュ辞書（元のキャッシュは変更されません）
+
+    Raises:
+        ValueError: max_entries が正の整数でない場合
     """
+    # max_entries の検証（0以下や非整数を防ぐ）
+    if not isinstance(max_entries, int) or max_entries <= 0:
+        raise ValueError("max_entries must be a positive integer")
+
     # OrderedDictを使用して順序情報を明示的に管理する
     # 呼び出し側でOrderedDictを使用している場合はそのまま利用し、
     # 通常のdictが渡された場合は現在の順序を保持したOrderedDictに変換する

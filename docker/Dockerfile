@@ -6,11 +6,16 @@ WORKDIR /src
 # requirements.txtをコピーしてライブラリをインストール
 COPY app/requirements.txt .
 COPY app/requirements-gpu.txt .
+
+# 依存ライブラリのインストールとspaCyモデルのダウンロード
+# 各spaCyモデルのダウンロードは個別のRUNステップと明示的なエラーメッセージで検証し、
+# ダウンロード失敗時にはビルドを明確なメッセージ付きで停止させる。
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-gpu.txt && \
-    python -m spacy download en_core_web_md && \
-    python -m spacy download ja_core_news_md
+    pip install --no-cache-dir -r requirements-gpu.txt
+
+RUN python -m spacy download en_core_web_md || { echo >&2 "Failed to download spaCy model 'en_core_web_md'"; exit 1; }
+RUN python -m spacy download ja_core_news_md || { echo >&2 "Failed to download spaCy model 'ja_core_news_md'"; exit 1; }
 
 # アプリケーションコードをコピー
 COPY app/ .

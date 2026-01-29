@@ -57,10 +57,20 @@ def is_trusted_checkpoint_path(checkpoint_path: str) -> bool:
             try:
                 # 相対パスで判定（シンボリックリンク解決済み）
                 resolved.relative_to(trusted_dir_obj)
-                return True
             except ValueError:
                 # 相対パスでない場合は次のディレクトリをチェック
                 continue
+
+            # models/checkpoints/ 配下のファイルはそのまま信頼する
+            if trusted_dir_obj == checkpoints_dir:
+                return True
+
+            # models/ 配下については .pth ファイルのみ信頼する
+            if trusted_dir_obj == models_dir:
+                if resolved.suffix == ".pth":
+                    return True
+                # models/配下だが .pth ではないファイルは信頼しない
+                return False
 
         return False
     except Exception as e:
