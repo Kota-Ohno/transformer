@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from collections import OrderedDict
 import math
 
 # キャッシュサイズの最大値
@@ -195,17 +196,24 @@ def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
     Returns:
         dict: サイズ調整後の新しいキャッシュ辞書（元のキャッシュは変更されません）
     """
-    if len(cache) <= max_entries:
+    # OrderedDictを使用して順序情報を明示的に管理する
+    # 呼び出し側でOrderedDictを使用している場合はそのまま利用し、
+    # 通常のdictが渡された場合は現在の順序を保持したOrderedDictに変換する
+    if isinstance(cache, OrderedDict):
+        ordered_cache = cache
+    else:
+        ordered_cache = OrderedDict(cache)
+
+    if len(ordered_cache) <= max_entries:
         # 元のキャッシュを変更しないため、新しい辞書を作成して返す
-        return dict(cache)
+        return dict(ordered_cache)
 
-    # 最も古いエントリを削除（ここではシンプルに最初のn個を削除）
-    num_to_remove = len(cache) - max_entries
+    # 最も古いエントリを削除（popitem(last=False)で明示的に先頭から削除）
+    num_to_remove = len(ordered_cache) - max_entries
+    pruned_cache = OrderedDict(ordered_cache)
+    for _ in range(num_to_remove):
+        # 先頭（最も古い）エントリを削除
+        pruned_cache.popitem(last=False)
 
-    # キーのリストを取得
-    keys = list(cache.keys())
-
-    # 新しい辞書を作成（最初のnum_to_remove個のキーを除く）
-    new_cache = {key: cache[key] for key in keys[num_to_remove:]}
-
-    return new_cache
+    # 呼び出し側の互換性を保つため、通常のdictとして返す
+    return dict(pruned_cache)

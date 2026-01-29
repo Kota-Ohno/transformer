@@ -503,15 +503,17 @@ class DataAugmentor:
 
                 # 特殊トークンIDを取得（フィルタリング用）
                 special_token_ids = set()
+                eos_token_id = None
                 try:
                     if hasattr(tgt_tokenizer, 'pad_id') and callable(tgt_tokenizer.pad_id):
                         pad_token_id = tgt_tokenizer.pad_id()
                         if pad_token_id is not None and pad_token_id >= 0:
                             special_token_ids.add(pad_token_id)
                     if hasattr(tgt_tokenizer, 'eos_id') and callable(tgt_tokenizer.eos_id):
-                        eos_token_id = tgt_tokenizer.eos_id()
-                        if eos_token_id is not None and eos_token_id >= 0:
-                            special_token_ids.add(eos_token_id)
+                        eos_candidate = tgt_tokenizer.eos_id()
+                        if eos_candidate is not None and eos_candidate >= 0:
+                            eos_token_id = eos_candidate
+                            special_token_ids.add(eos_candidate)
                     if hasattr(tgt_tokenizer, 'unk_id') and callable(tgt_tokenizer.unk_id):
                         unk_token_id = tgt_tokenizer.unk_id()
                         if unk_token_id is not None and unk_token_id >= 0:
@@ -531,19 +533,14 @@ class DataAugmentor:
 
                         # パディングと特殊トークンを除去し、eos_token_idで停止
                         output_ids = []
-                        # eos_token_idは既にspecial_token_idsの構築時に取得済みなので再利用
-                        # special_token_idsから直接取得できない場合のみフォールバック
-                        eos_token_id = None
-                        for token_id in special_token_ids:
-                            # special_token_idsはsetなので、eos_idを特定するために再度取得
-                            if hasattr(tgt_tokenizer, 'eos_id') and callable(tgt_tokenizer.eos_id):
-                                try:
-                                    candidate_eos = tgt_tokenizer.eos_id()
-                                    if candidate_eos is not None and candidate_eos >= 0:
-                                        eos_token_id = candidate_eos
-                                        break
-                                except Exception:
-                                    pass
+                        # eos_token_id が未取得の場合のみ一度だけフォールバックで取得
+                        if eos_token_id is None and hasattr(tgt_tokenizer, 'eos_id') and callable(tgt_tokenizer.eos_id):
+                            try:
+                                eos_candidate = tgt_tokenizer.eos_id()
+                                if eos_candidate is not None and eos_candidate >= 0:
+                                    eos_token_id = eos_candidate
+                            except Exception:
+                                pass
 
                         for token_id in output_ids_raw:
                             # eos_token_idが見つかったら停止

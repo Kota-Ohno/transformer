@@ -3,8 +3,10 @@ import os
 import json
 import threading
 from dataclasses import dataclass, field, is_dataclass
-from typing import List, Any, get_origin, get_args, Tuple
+from typing import List, Any, get_origin, get_args, Tuple, ClassVar
 import logging
+
+_UNSET = object()
 
 class ModelConfig:
     """
@@ -76,7 +78,7 @@ class ModelConfig:
             # 4GB未満: 3レイヤー (hidden=256, heads=4)
             return cls(hidden_size=256, num_heads=4, num_layers=3, d_ff=1024, dropout_rate=0.1, max_seq_length=512, rel_pos_max_distance=128)
 
-@dataclass
+@dataclass(init=False)
 class ModelHyperparameters:
     """
     Transformerモデルのハイパーパラメータ設定。
@@ -84,22 +86,22 @@ class ModelHyperparameters:
     GlobalConfigの初期化時に、GPUメモリに基づいて自動的に調整されます。
     環境変数やconfig.jsonファイルでオーバーライド可能です。
     """
-    # クラス定数としてデフォルト値を定義
-    DEFAULT_HIDDEN_SIZE: int = field(default=512, init=False, repr=False)
-    DEFAULT_NUM_HEADS: int = field(default=8, init=False, repr=False)
-    DEFAULT_NUM_LAYERS: int = field(default=6, init=False, repr=False)
-    DEFAULT_D_FF: int = field(default=2048, init=False, repr=False)
-    DEFAULT_DROPOUT_RATE: float = field(default=0.1, init=False, repr=False)
-    DEFAULT_MAX_SEQ_LENGTH: int = field(default=512, init=False, repr=False)
-    DEFAULT_REL_POS_MAX_DISTANCE: int = field(default=128, init=False, repr=False)
+    # クラス定数としてデフォルト値を定義（インスタンスフィールドではなくClassVarとして扱う）
+    DEFAULT_HIDDEN_SIZE: ClassVar[int] = 512
+    DEFAULT_NUM_HEADS: ClassVar[int] = 8
+    DEFAULT_NUM_LAYERS: ClassVar[int] = 6
+    DEFAULT_D_FF: ClassVar[int] = 2048
+    DEFAULT_DROPOUT_RATE: ClassVar[float] = 0.1
+    DEFAULT_MAX_SEQ_LENGTH: ClassVar[int] = 512
+    DEFAULT_REL_POS_MAX_DISTANCE: ClassVar[int] = 128
 
-    hidden_size: int = 512
-    num_heads: int = 8
-    num_layers: int = 6
-    d_ff: int = 2048
-    dropout_rate: float = 0.1
-    max_seq_length: int = 512
-    rel_pos_max_distance: int = 128
+    hidden_size: int
+    num_heads: int
+    num_layers: int
+    d_ff: int
+    dropout_rate: float
+    max_seq_length: int
+    rel_pos_max_distance: int
 
     # 各フィールドが明示的に設定されたかどうかを追跡するフラグ
     _is_set_hidden_size: bool = field(default=False, init=False, repr=False)
@@ -110,38 +112,89 @@ class ModelHyperparameters:
     _is_set_max_seq_length: bool = field(default=False, init=False, repr=False)
     _is_set_rel_pos_max_distance: bool = field(default=False, init=False, repr=False)
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        hidden_size: Any = _UNSET,
+        num_heads: Any = _UNSET,
+        num_layers: Any = _UNSET,
+        d_ff: Any = _UNSET,
+        dropout_rate: Any = _UNSET,
+        max_seq_length: Any = _UNSET,
+        rel_pos_max_distance: Any = _UNSET,
+    ) -> None:
         """
-        ハイパーパラメータのバリデーションと_is_set_*フラグの設定を実行します。
+        明示的に指定された値と未指定の値を区別しつつ初期化を行います。
 
-        コンストラクタ引数でデフォルト値と異なる値が渡された場合、
-        対応する_is_set_*フラグをTrueに設定します。
-        これにより、initialize_gpu_aware_defaults()がユーザー指定値を検出できます。
-
-        Transformerモデルの制約として、hidden_sizeはnum_headsで割り切れる必要があります。
-        この制約を満たさない場合、モデル初期化時にエラーが発生するため、
-        設定段階で検証を行います。
-
-        Raises:
-            ValueError: hidden_sizeがnum_headsで割り切れない場合。
-                エラーメッセージにはhidden_sizeとnum_headsの値が含まれます。
+        各パラメータが_UNSETの場合はクラスデフォルト（DEFAULT_*）を使用し、
+        それ以外の場合はユーザー指定値として扱い、対応する_is_set_*フラグをTrueに設定します。
         """
-        # コンストラクタ引数がデフォルト値と異なる場合、_is_set_*フラグを設定
-        if self.hidden_size != self.DEFAULT_HIDDEN_SIZE:
+        # まず全フラグをFalseで初期化
+        self._is_set_hidden_size = False
+        self._is_set_num_heads = False
+        self._is_set_num_layers = False
+        self._is_set_d_ff = False
+        self._is_set_dropout_rate = False
+        self._is_set_max_seq_length = False
+        self._is_set_rel_pos_max_distance = False
+
+        # hidden_size
+        if hidden_size is _UNSET:
+            self.hidden_size = self.DEFAULT_HIDDEN_SIZE
+        else:
+            self.hidden_size = int(hidden_size)
             self._is_set_hidden_size = True
-        if self.num_heads != self.DEFAULT_NUM_HEADS:
+
+        # num_heads
+        if num_heads is _UNSET:
+            self.num_heads = self.DEFAULT_NUM_HEADS
+        else:
+            self.num_heads = int(num_heads)
             self._is_set_num_heads = True
-        if self.num_layers != self.DEFAULT_NUM_LAYERS:
+
+        # num_layers
+        if num_layers is _UNSET:
+            self.num_layers = self.DEFAULT_NUM_LAYERS
+        else:
+            self.num_layers = int(num_layers)
             self._is_set_num_layers = True
-        if self.d_ff != self.DEFAULT_D_FF:
+
+        # d_ff
+        if d_ff is _UNSET:
+            self.d_ff = self.DEFAULT_D_FF
+        else:
+            self.d_ff = int(d_ff)
             self._is_set_d_ff = True
-        if self.dropout_rate != self.DEFAULT_DROPOUT_RATE:
+
+        # dropout_rate
+        if dropout_rate is _UNSET:
+            self.dropout_rate = self.DEFAULT_DROPOUT_RATE
+        else:
+            self.dropout_rate = float(dropout_rate)
             self._is_set_dropout_rate = True
-        if self.max_seq_length != self.DEFAULT_MAX_SEQ_LENGTH:
+
+        # max_seq_length
+        if max_seq_length is _UNSET:
+            self.max_seq_length = self.DEFAULT_MAX_SEQ_LENGTH
+        else:
+            self.max_seq_length = int(max_seq_length)
             self._is_set_max_seq_length = True
-        if self.rel_pos_max_distance != self.DEFAULT_REL_POS_MAX_DISTANCE:
+
+        # rel_pos_max_distance
+        if rel_pos_max_distance is _UNSET:
+            self.rel_pos_max_distance = self.DEFAULT_REL_POS_MAX_DISTANCE
+        else:
+            self.rel_pos_max_distance = int(rel_pos_max_distance)
             self._is_set_rel_pos_max_distance = True
 
+        # 最後にバリデーションを実行
+        self.__post_init__()
+
+    def __post_init__(self) -> None:
+        """
+        ハイパーパラメータのバリデーションを実行します。
+
+        _is_set_*フラグは__init__で設定されるため、ここでは変更しません。
+        """
         self.validate()
 
     def validate(self) -> None:

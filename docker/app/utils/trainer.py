@@ -564,7 +564,9 @@ class Trainer:
                             logging.warning(f"CUDAキャッシュの解放に失敗しました: {e}")
 
                 except KeyboardInterrupt:
-                    last_epoch = epoch + 1
+                    # 現在進行中のエポック番号をそのままlast_epochとして保持し、
+                    # 実際に完了した作業量と整合するようにする
+                    last_epoch = epoch
                     logging.info("ユーザーによって中断されました。最終チェックポイントを保存します...")
                     # 最新の検証済みメトリクスを使用（存在しない場合はデフォルト値にフォールバック）
                     interrupt_valid_loss = getattr(self, 'last_valid_loss', None)
@@ -581,7 +583,7 @@ class Trainer:
                         model=self.model,
                         optimizer=self.optimizer,
                         scheduler=self.scheduler,
-                        epoch=epoch,
+                        epoch=last_epoch,
                         val_loss=interrupt_valid_loss,
                         bleu_score=interrupt_bleu_score,
                         is_best=False,
