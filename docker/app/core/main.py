@@ -218,9 +218,23 @@ def main() -> int:
         print(f"{Colors.SUCCESS}小さいモデルを使用: hidden_size=256, heads=4, layers=4{Colors.RESET}")
 
     # データサンプル数制限の設定
-    if args.limit_samples is not None and args.limit_samples > 0:
+    if args.limit_samples is not None:
         os.environ['TRANSFORMER_LIMIT_SAMPLES'] = str(args.limit_samples)
-        print(f"{Colors.WARNING}トレーニングデータを{args.limit_samples}サンプルに制限します{Colors.RESET}")
+        if args.limit_samples == 0:
+            print(
+                f"{Colors.WARNING}"
+                f"--limit-samples=0 が指定されました。"
+                f" TRANSFORMER_LIMIT_SAMPLES={os.environ['TRANSFORMER_LIMIT_SAMPLES']} として設定しますが、"
+                f"これは実質的にトレーニングデータを0サンプルとして扱い、トレーニングを実行できない可能性があります。"
+                f"{Colors.RESET}"
+            )
+        else:
+            print(
+                f"{Colors.WARNING}"
+                f"トレーニングデータを{args.limit_samples}サンプルに制限します "
+                f"(TRANSFORMER_LIMIT_SAMPLES={os.environ['TRANSFORMER_LIMIT_SAMPLES']})"
+                f"{Colors.RESET}"
+            )
 
     # 環境変数設定後にCONFIGを再読み込み
     CONFIG.reload_from_env()

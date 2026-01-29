@@ -123,13 +123,6 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
     X_flat = [flatten_and_convert(x) for x in X]
     Y_flat = [flatten_and_convert(y) for y in Y]
 
-    # X_flatが空でないことを確認
-    if not X_flat:
-        raise ValueError(
-            "X_flat is empty after flatten_and_convert. "
-            "Please ensure your dataset contains valid input sequences."
-        )
-
     # 長さ1以下のYシーケンスと長さ0のXシーケンスをフィルタリング（訓練に有用でないため除外）
     original_len = len(X_flat)
     valid_indices = [

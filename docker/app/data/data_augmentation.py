@@ -627,6 +627,8 @@ class DataAugmentor:
 
         for technique in techniques:
             try:
+                # 各テクニック適用前のスナップショットを保持しておく
+                orig_token_ids = augmented_ids.copy()
                 if technique == "masking":
                     augmented_ids = self.token_masking(augmented_ids, mask_prob=probs.get("masking", DEFAULT_MASK_PROB), rng=rng,
                                                       tokenizer=tokenizer)
@@ -638,6 +640,8 @@ class DataAugmentor:
                 elif technique == "permutation":
                     augmented_ids = self.token_permutation(augmented_ids, perm_prob=probs.get("permutation", DEFAULT_PERMUTATION_PROB), rng=rng)
             except Exception as e:
+                # 失敗したテクニックによる部分的な変更を元に戻す
+                augmented_ids = orig_token_ids
                 error_count += 1
                 # スタックトレースも含めて詳細なエラー情報を出力
                 logging.error(f"{technique}拡張適用中にエラーが発生しました: {e}", exc_info=True)

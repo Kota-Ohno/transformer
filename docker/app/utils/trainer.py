@@ -668,12 +668,11 @@ class Trainer:
                 pass
 
         final_model_dir = "models"
-        final_model_path = ""
+        final_model_path = os.path.join(
+            final_model_dir, f"final_model_epoch_{last_epoch}.pt"
+        )
         try:
             os.makedirs(final_model_dir, exist_ok=True)
-            final_model_path = os.path.join(
-                final_model_dir, f"final_model_epoch_{last_epoch}.pt"
-            )
             torch.save({
                 'model_state_dict': self.model.state_dict(),
                 'input_vocab': self.input_vocab,
