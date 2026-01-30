@@ -11,7 +11,7 @@ _constants_import_error: Optional[ImportError] = None
 _constants_warning_logged = False
 
 try:
-    from . import constants
+    from utils import constants
     _constants_available = True
 except ImportError as e:
     _constants_available = False

@@ -2,13 +2,13 @@
 Models package initialization.
 """
 
-from .mlm_model import MLMModel, create_mlm_model
-from .encoder import Encoder, EncoderLayer
-from .layers import PositionalEncoding, FeedForward
-from .attention import MultiHeadAttention, ScaledDotProductAttention
-from .loss import MLMLoss, LabelSmoothingCrossEntropyLoss, create_loss_function
-from .decoder import DecoderLayer, Decoder
-from .model import Transformer, TranslationModel
+from models.mlm_model import MLMModel, create_mlm_model
+from models.encoder import Encoder, EncoderLayer
+from models.layers import PositionalEncoding, FeedForward
+from models.attention import MultiHeadAttention, ScaledDotProductAttention
+from models.loss import MLMLoss, LabelSmoothingCrossEntropyLoss, create_loss_function
+from models.decoder import DecoderLayer, Decoder
+from models.model import Transformer, TranslationModel
 
 __all__ = [
     "MLMModel",

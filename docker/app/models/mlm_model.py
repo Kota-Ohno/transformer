@@ -6,8 +6,8 @@ import torch.nn as nn
 import math
 from typing import Optional, Tuple
 
-from .encoder import Encoder
-from .layers import PositionalEncoding
+from models.encoder import Encoder
+from models.layers import PositionalEncoding
 
 
 class MLMHead(nn.Module):

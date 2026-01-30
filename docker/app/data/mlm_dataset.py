@@ -117,7 +117,7 @@ class WikiText2MLMDataset(Dataset):
         attention_mask = (input_ids != self.pad_token_id).long()
         
         # MLMマスキングを適用
-        from ..utils.masking import apply_mlm_mask_batch
+        from utils.masking import apply_mlm_mask_batch
         masked_input_ids, labels = apply_mlm_mask_batch(
             input_ids.unsqueeze(0),  # バッチ次元を追加
             mask_token_id=self.mask_token_id,
