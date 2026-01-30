@@ -14,4 +14,4 @@ services:
     environment:
       - WANDB_API_KEY=${WANDB_API_KEY:-}
       - TRANSFORMER_GLOBAL_DEVICE=cpu
-    command: /bin/bash
+      - PYTHONPATH=/src

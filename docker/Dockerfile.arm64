@@ -1,4 +1,4 @@
-# Apple Silicon (ARM64) 用 Dockerfile
+# Apple Silicon (ARM64) 用 Dockerfile - シンプル版
 FROM python:3.10-slim
 
 # 作業ディレクトリの設定
@@ -28,22 +28,10 @@ RUN python -m spacy download ja_core_news_md || echo "ja_core_news_md download s
 # アプリケーションコードをコピー
 COPY app/ .
 
-# エントリーポイントスクリプトをコピー
-COPY entrypoint.sh /src/entrypoint.sh
-RUN chmod +x /src/entrypoint.sh
-
-# 非rootユーザーの作成
-RUN groupadd -r transformer && \
-    useradd -r -g transformer -u 1000 transformer && \
-    chown -R transformer:transformer /src
-
 # 環境変数の設定
 ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/src
 ENV TRANSFORMER_GLOBAL_DEVICE=cpu
 
-# 非rootユーザーに切り替え
-USER transformer
-
 # デフォルトコマンド
-ENTRYPOINT ["/src/entrypoint.sh"]
 CMD ["/bin/bash"]
