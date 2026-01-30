@@ -113,7 +113,7 @@ def evaluate(
                 inference_start = time.time()
                 # 混合精度を使用（FP16/BF16）
                 with torch.amp.autocast(device_type='cuda', enabled=device.type=='cuda'):
-                    output = model(src, tgt_input)
+                    output, _ = model(src, tgt_input)
                 inference_time = time.time() - inference_start
                 total_inference_time += inference_time
 

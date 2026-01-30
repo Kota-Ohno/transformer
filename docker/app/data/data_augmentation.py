@@ -4,6 +4,7 @@ from tqdm import tqdm
 import os
 import logging
 from typing import List, Tuple, Dict
+import warnings
 
 from utils.config import CONFIG
 from utils.constants import (
@@ -12,8 +13,14 @@ from utils.constants import (
     MAX_DATA_AUGMENTATION_ERRORS, DEFAULT_BATCH_SIZE_SMALL_VRAM
 )
 from utils.logging_config import setup_logging
-from data.tokenizer_utils import normalize_text, tokenize_with_sentencepiece
-from data.tokenizer_utils import train_and_load_sp_models
+from data.tokenizer_utils import normalize_text
+
+# MLMタスクではこのモジュールは非推奨
+warnings.warn(
+    "data_augmentation.pyは翻訳タスク用です。MLMタスクでは使用しないでください。",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 # ロギング設定
 setup_logging()

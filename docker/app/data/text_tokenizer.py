@@ -4,7 +4,6 @@ import torch
 import threading
 from typing import List, Union, Tuple, Optional
 from data.tokenizer_utils import normalize_text
-from data.tokenizer_utils import train_and_load_sp_models
 from utils.config import CONFIG  # Import CONFIG dictionary
 from tqdm import tqdm
 import sentencepiece as spm
@@ -86,36 +85,14 @@ class TextTokenizer:
 
         Returns:
             TextTokenizer: 訓練されたモデルを持つTextTokenizerインスタンス
+        
+        Note:
+            このメソッドは現在MLMタスクでは非推奨です。Hugging Face Tokenizerを使用してください。
         """
-        logger.info("SentencePieceモデルを訓練中...")
-        # save_path_src/save_path_tgtが指定されている場合は、訓練時に直接そのパスに保存
-        sp_src, sp_tgt = train_and_load_sp_models(
-            train_texts_src, train_texts_tgt, save_path_src, save_path_tgt
+        raise NotImplementedError(
+            "SentencePieceモデルの訓練は現在サポートされていません。"
+            "MLMタスクではHugging Face Tokenizerを使用してください。"
         )
-
-        tokenizer = cls(sp_src=sp_src, sp_tgt=sp_tgt)
-
-        # ヘルパー関数: .model拡張子を追加し、パスを設定して保存
-        def _normalize_and_save_path(save_path: Optional[str], is_source: bool) -> None:
-            """パスを正規化し、保存してパス属性を設定するヘルパー関数"""
-            if save_path:
-                # .model拡張子を追加
-                normalized_path = (
-                    save_path if save_path.endswith(".model") else f"{save_path}.model"
-                )
-                # 保存を実行（save_model内で存在チェックが行われる）
-                tokenizer.save_model(normalized_path, is_source=is_source)
-                # 使用されたパス（拡張子付き）を設定
-                if is_source:
-                    tokenizer.sp_src_path = normalized_path
-                else:
-                    tokenizer.sp_tgt_path = normalized_path
-
-        # ソースとターゲットのパスを処理
-        _normalize_and_save_path(save_path_src, is_source=True)
-        _normalize_and_save_path(save_path_tgt, is_source=False)
-
-        return tokenizer
 
     @classmethod
     def load(
