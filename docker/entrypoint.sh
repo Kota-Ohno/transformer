@@ -128,5 +128,11 @@ else
     check_cuda_availability "$TRANSFORMER_DEVICE" "TRANSFORMER_DEVICE"
 fi
 
-# アプリケーションを実行
-exec python -m core.main "$@"
+# 引数に基づいて実行
+if [ $# -eq 0 ]; then
+    # 引数がない場合は対話型シェルを開始
+    exec /bin/bash
+else
+    # 引数がある場合はそれを実行
+    exec "$@"
+fi

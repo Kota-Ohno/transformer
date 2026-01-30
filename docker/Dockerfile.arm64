@@ -28,28 +28,9 @@ RUN python -m spacy download ja_core_news_md || echo "ja_core_news_md download s
 # アプリケーションコードをコピー
 COPY app/ .
 
-# エントリーポイントスクリプトを作成
-RUN echo '#!/bin/bash\n\
-set -e\n\
-\n\
-# Pythonパスを設定\n\
-export PYTHONPATH=/src:$PYTHONPATH\n\
-\n\
-# デフォルトでCPUを使用（Apple SiliconではCUDA不可）\n\
-export TRANSFORMER_GLOBAL_DEVICE=cpu\n\
-\n\
-echo "========================================"\n\
-echo "Transformer MLM Environment"\n\
-echo "Platform: $(uname -m)"\n\
-echo "Device: CPU (Apple Silicon)"\n\
-echo "========================================"\n\
-\n\
-# 引数があればそれを実行、なければシェル\n\
-if [ $# -eq 0 ]; then\n\
-    exec /bin/bash\n\
-else\n\
-    exec "$@"\n\
-fi' > /src/entrypoint.sh && chmod +x /src/entrypoint.sh
+# エントリーポイントスクリプトをコピー
+COPY entrypoint.sh /src/entrypoint.sh
+RUN chmod +x /src/entrypoint.sh
 
 # 非rootユーザーの作成
 RUN groupadd -r transformer && \
