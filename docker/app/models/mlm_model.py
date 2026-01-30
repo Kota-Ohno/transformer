@@ -76,7 +76,7 @@ class MLMModel(nn.Module):
         self.token_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_idx)
         
         # 位置エンコーディング
-        self.positional_encoding = PositionalEncoding(hidden_size, max_seq_length, dropout_rate)
+        self.positional_encoding = PositionalEncoding(hidden_size, max_seq_length)
         
         # Transformer Encoder
         self.encoder = Encoder(hidden_size, num_heads, d_ff, num_layers, dropout_rate)
