@@ -1,0 +1,68 @@
+# Apple Silicon (ARM64) 用 Dockerfile
+FROM python:3.10-slim
+
+# 作業ディレクトリの設定
+WORKDIR /src
+
+# システムパッケージのインストール
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    libprotobuf-dev \
+    protobuf-compiler \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# requirements.txtをコピー
+COPY app/requirements.txt .
+
+# CPU版PyTorchをインストール（Apple Silicon対応）
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu && \
+    pip install --no-cache-dir -r requirements.txt
+
+# spaCyモデルのダウンロード（オプション）
+RUN python -m spacy download en_core_web_md || echo "en_core_web_md download skipped"
+RUN python -m spacy download ja_core_news_md || echo "ja_core_news_md download skipped"
+
+# アプリケーションコードをコピー
+COPY app/ .
+
+# エントリーポイントスクリプトを作成
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Pythonパスを設定\n\
+export PYTHONPATH=/src:$PYTHONPATH\n\
+\n\
+# デフォルトでCPUを使用（Apple SiliconではCUDA不可）\n\
+export TRANSFORMER_GLOBAL_DEVICE=cpu\n\
+\n\
+echo "========================================"\n\
+echo "Transformer MLM Environment"\n\
+echo "Platform: $(uname -m)"\n\
+echo "Device: CPU (Apple Silicon)"\n\
+echo "========================================"\n\
+\n\
+# 引数があればそれを実行、なければシェル\n\
+if [ $# -eq 0 ]; then\n\
+    exec /bin/bash\n\
+else\n\
+    exec "$@"\n\
+fi' > /src/entrypoint.sh && chmod +x /src/entrypoint.sh
+
+# 非rootユーザーの作成
+RUN groupadd -r transformer && \
+    useradd -r -g transformer -u 1000 transformer && \
+    chown -R transformer:transformer /src
+
+# 環境変数の設定
+ENV PYTHONUNBUFFERED=1
+ENV TRANSFORMER_GLOBAL_DEVICE=cpu
+
+# 非rootユーザーに切り替え
+USER transformer
+
+# デフォルトコマンド
+ENTRYPOINT ["/src/entrypoint.sh"]
+CMD ["/bin/bash"]
