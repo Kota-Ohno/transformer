@@ -100,6 +100,51 @@ python core/train_mlm.py --label-smoothing 0.1
 python core/train_mlm.py --tensorboard-dir runs/my_experiment
 ```
 
+#### 具体的な学習例
+
+**試運転（1エポックだけ実行）:**
+```bash
+python core/train_mlm.py \
+    --model-size small \
+    --epochs 1 \
+    --batch-size 16 \
+    --save-dir models/test_run \
+    --tensorboard-dir runs/test
+```
+
+**M4 Mac推奨設定（16GB RAM）:**
+```bash
+python core/train_mlm.py \
+    --model-size base \
+    --epochs 10 \
+    --batch-size 8 \
+    --lr 5e-5 \
+    --label-smoothing 0.1 \
+    --save-dir models/mlm_base \
+    --tensorboard-dir runs/mlm_base \
+    --patience 5
+```
+
+**高性能GPU環境:**
+```bash
+python core/train_mlm.py \
+    --model-size large \
+    --epochs 20 \
+    --batch-size 64 \
+    --lr 3e-5 \
+    --label-smoothing 0.1 \
+    --save-dir models/mlm_large \
+    --tensorboard-dir runs/mlm_large
+```
+
+**学習再開（チェックポイントから）:**
+```bash
+python core/train_mlm.py \
+    --model-size base \
+    --resume \
+    --save-dir models/mlm_base
+```
+
 #### 学習パラメータ一覧
 
 | パラメータ | デフォルト | 説明 |
@@ -115,42 +160,134 @@ python core/train_mlm.py --tensorboard-dir runs/my_experiment
 
 ### 4. TensorBoardで学習状況を確認
 
-```bash
-# コンテナ内でTensorBoardを起動
-tensorboard --logdir=runs/mlm_training --bind_all
+#### 方法1: コンテナ内で起動（推奨）
 
-# 別ターミナルからポートフォワード
+```bash
+# コンテナ内でTensorBoardを起動（バックグラウンドで実行可能）
+tensorboard --logdir=runs --bind_all --port 6006
+
+# 別ターミナル（ホスト側）でポートを確認
 docker port transformer 6006
+
+# ブラウザでアクセス
+# http://localhost:6006
+```
+
+#### 方法2: SSHトンネル（リモートサーバーの場合）
+
+```bash
+# ローカルマシンからSSHトンネルを作成
+ssh -L 6006:localhost:6006 user@remote-server
+
 # ブラウザで http://localhost:6006 を開く
 ```
 
+#### TensorBoardの主な機能
+
+- **Scalars**: Loss、Perplexity、Accuracyの推移を確認
+- **Graphs**: モデルの計算グラフを可視化
+- **Histograms**: パラメータ分布の変化を追跡
+- **HParams**: 異なるハイパーパラメータの比較
+
 ### 5. MLM推論
 
-#### 対話モード
+学習済みモデルを使用してマスクされたトークンを予測します。
+
+#### 対話モード（インタラクティブ）
+
+最も簡単な使用方法です。対話的に文章を入力して予測結果を確認できます。
 
 ```bash
 python core/predict_mlm.py --interactive
+```
 
-# 入力例:
-# The cat sat on the [MASK] and looked at the birds.
+**入力例:**
+```
+入力: The cat sat on the [MASK] and looked at the birds.
+
+予測結果:
+  1. [MASK] → 'mat'
+     候補: mat(45.2%), bed(12.3%), floor(8.7%), ...
+
+入力: I love to eat [MASK] for breakfast.
+
+予測結果:
+  1. [MASK] → 'pancakes'
+     候補: pancakes(32.1%), eggs(18.5%), cereal(15.2%), ...
+```
+
+**終了方法:** `quit` または `exit` と入力、または Ctrl+C
 # I love to eat [MASK] for breakfast.
 ```
 
 #### 単一テキスト
 
+特定の文章だけを予測したい場合に使用します。
+
 ```bash
-python core/predict_mlm.py --text "The cat sat on the [MASK] and looked at the birds."
+# 基本的な使用法
+python core/predict_mlm.py \
+    --text "The cat sat on the [MASK] and looked at the birds."
+
+# 学習済みモデルを指定する場合
+python core/predict_mlm.py \
+    --text "The cat sat on the [MASK]." \
+    --model-path models/mlm_base \
+    --top-k 10
+
+# 出力例:
+# 入力: The cat sat on the [MASK] and looked at the birds.
+# 
+# 予測 1:
+#   最確: 'mat'
+#   候補: mat(45.2%), bed(12.3%), floor(8.7%), chair(6.5%), sofa(5.2%)
 ```
 
 #### ファイルからバッチ処理
 
-```bash
-# 予測したいテキストを1行ごとに記載
-echo "The cat sat on the [MASK]." > input.txt
-echo "I love [MASK] pizza." >> input.txt
+複数の文章を一括で処理したい場合に使用します。
 
-# 実行
-python core/predict_mlm.py --file input.txt --output results.json
+```bash
+# 1. 予測したいテキストを1行ごとに記載したファイルを作成
+cat > input.txt << 'EOF'
+The cat sat on the [MASK] and looked at the birds.
+I love [MASK] pizza.
+The [MASK] is shining brightly today.
+She works as a [MASK] at the hospital.
+EOF
+
+# 2. バッチ処理を実行
+python core/predict_mlm.py \
+    --file input.txt \
+    --output results.json \
+    --model-path models/mlm_base
+
+# 3. 結果を確認
+cat results.json
+```
+
+**入力ファイルの形式:**
+- 1行に1つの文章
+- 必ず1つ以上の `[MASK]` を含める
+- 空行は無視されます
+
+**出力ファイル (JSON形式):**
+```json
+[
+  {
+    "text": "The cat sat on the [MASK] and looked at the birds.",
+    "predictions": [
+      {
+        "position": 5,
+        "predicted": "mat",
+        "candidates": [
+          {"token": "mat", "probability": 0.452},
+          {"token": "bed", "probability": 0.123}
+        ]
+      }
+    ]
+  }
+]
 ```
 
 ## モデルアーキテクチャ
@@ -240,12 +377,68 @@ python core/train_mlm.py --model-size small
 ### Dockerコンテナが起動しない
 
 ```bash
-# ログを確認
+# 1. ログを確認
 docker logs transformer
 
-# コンテナを再起動
-docker compose down && docker compose up -d
+# 2. コンテナの状態を確認
+docker ps -a | grep transformer
+
+# 3. クリーンアップして再起動
+docker compose down -v
+docker rm -f transformer 2>/dev/null
+docker compose up -d
+
+# 4. それでも起動しない場合は、イメージを再ビルド
+docker compose down
+docker compose build --no-cache
+docker compose up -d
 ```
+
+### 学習が遅い / GPUが使われていない
+
+**M1/M2/M4 Macの場合:**
+- Docker DesktopでRosettaは無効にしてください
+- ネイティブARM64イメージを使用（Dockerfile.arm64）
+
+**確認コマンド:**
+```bash
+# PyTorchのデバイス確認
+python -c "import torch; print(f'Device: {torch.device}')"
+
+# CPUのみの場合は、これが表示されます
+# Device: cpu
+```
+
+**注意:** M1/M2/M4 MacではGPU（Metal）をPyTorchで使用するのは現在難しいため、CPU学習が推奨されます。M4 Macの高性能CPUで十分速く学習できます。
+
+### データセットのダウンロードが失敗する
+
+```bash
+# キャッシュをクリアして再試行
+rm -rf ~/.cache/huggingface/datasets
+python core/train_mlm.py --cache-dir /tmp/datasets
+```
+
+### 予測結果がおかしい / 精度が低い
+
+1. **学習が十分か確認**
+   - 最低5エポック以上の学習が必要
+   - Perplexityが10以下になるまで学習
+
+2. **モデルパスを確認**
+   ```bash
+   # 正しいモデルパスを指定
+   python core/predict_mlm.py --model-path models/mlm_base
+   ```
+
+3. **入力に[MASK]が含まれているか確認**
+   ```bash
+   # 正しい例
+   echo "The cat sat on the [MASK]."
+   
+   # 誤った例（MASKがない）
+   echo "The cat sat on the mat."
+   ```
 
 ## 開発者向け情報
 
