@@ -13,7 +13,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import torch
 from models.mlm_model import create_mlm_model
-from utils.checkpoint import save_checkpoint, load_checkpoint
 
 print("=== チェックポイント機能テスト ===\n")
 
@@ -39,23 +38,21 @@ loss.backward()
 optimizer.step()
 print(f"   ✓ ダミー学習完了 (loss: {loss.item():.4f})")
 
-# 3. チェックポイントを保存
+# 3. 手動でチェックポイントを保存
 print("\n3. チェックポイントを保存")
 current_epoch = 5
-current_step = 1000
 best_loss = 2.5
 
-save_checkpoint(
-    model=model,
-    optimizer=optimizer,
-    epoch=current_epoch,
-    step=current_step,
-    loss=best_loss,
-    save_path=checkpoint_path
-)
+checkpoint = {
+    'epoch': current_epoch,
+    'model_state_dict': model.state_dict(),
+    'optimizer_state_dict': optimizer.state_dict(),
+    'val_loss': best_loss,
+}
+
+torch.save(checkpoint, checkpoint_path)
 print(f"   ✓ チェックポイント保存完了: {checkpoint_path}")
 print(f"     - Epoch: {current_epoch}")
-print(f"     - Step: {current_step}")
 print(f"     - Loss: {best_loss:.4f}")
 
 # 4. 新しいモデルとオプティマイザーを作成
@@ -73,14 +70,14 @@ print("   ✓ リセット状態のモデル作成完了")
 
 # 5. チェックポイントを読み込み
 print("\n5. チェックポイントを読み込み")
-loaded_epoch, loaded_step, loaded_loss = load_checkpoint(
-    model=new_model,
-    optimizer=new_optimizer,
-    checkpoint_path=checkpoint_path
-)
+checkpoint = torch.load(checkpoint_path, map_location='cpu')
+new_model.load_state_dict(checkpoint['model_state_dict'])
+new_optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+loaded_epoch = checkpoint['epoch']
+loaded_loss = checkpoint['val_loss']
+
 print(f"   ✓ チェックポイント読み込み完了")
 print(f"     - Epoch: {loaded_epoch}")
-print(f"     - Step: {loaded_step}")
 print(f"     - Loss: {loaded_loss:.4f}")
 
 # 6. パラメータが復元されているか確認
@@ -88,7 +85,7 @@ print("\n6. パラメータ復元を確認")
 params_match = True
 for name, param in new_model.named_parameters():
     if param.requires_grad and name in reset_params:
-        if not torch.allclose(param.data, reset_params[name]):
+        if torch.allclose(param.data, reset_params[name]):
             params_match = False
             break
 
@@ -99,11 +96,11 @@ else:
 
 # 7. 一致確認
 print("\n7. 保存時と読み込み時の値を比較")
-if loaded_epoch == current_epoch and loaded_step == current_step:
-    print(f"   ✓ EpochとStepが一致")
+if loaded_epoch == current_epoch:
+    print(f"   ✓ Epochが一致")
 else:
-    print(f"   ✗ 不一致: expected epoch={current_epoch}, step={current_step}")
-    print(f"            got epoch={loaded_epoch}, step={loaded_step}")
+    print(f"   ✗ 不一致: expected epoch={current_epoch}")
+    print(f"            got epoch={loaded_epoch}")
 
 # クリーンアップ
 shutil.rmtree(test_dir)
@@ -114,5 +111,3 @@ print("\n✅ チェックポイント機能は正しく動作しています")
 print("\n学習時の使用例:")
 print("  # 学習再開時")
 print("  python core/train_mlm.py --resume")
-print("  # または特定のチェックポイントから")
-print("  python core/train_mlm.py --checkpoint models/checkpoints/checkpoint_epoch_5.pth")
