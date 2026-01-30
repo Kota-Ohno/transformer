@@ -8,7 +8,7 @@ from models.layers import PositionalEncoding, FeedForward
 from models.attention import MultiHeadAttention, ScaledDotProductAttention
 from models.loss import MLMLoss, LabelSmoothingCrossEntropyLoss, create_loss_function
 from models.decoder import DecoderLayer, Decoder
-from models.model import Transformer, TranslationModel
+from models.model import TranslationModel
 
 __all__ = [
     "MLMModel",
@@ -24,6 +24,5 @@ __all__ = [
     "FeedForward",
     "MultiHeadAttention",
     "ScaledDotProductAttention",
-    "Transformer",
     "TranslationModel",
 ]
