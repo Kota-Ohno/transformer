@@ -78,8 +78,8 @@ class MLMModel(nn.Module):
         # 位置エンコーディング
         self.positional_encoding = PositionalEncoding(hidden_size, max_seq_length)
         
-        # Transformer Encoder
-        self.encoder = Encoder(hidden_size, num_heads, d_ff, num_layers, dropout_rate)
+        # Transformer Encoder (vocab_size, d_model, num_heads, num_layers, d_ff, dropout, ...)
+        self.encoder = Encoder(vocab_size, hidden_size, num_heads, num_layers, d_ff, dropout_rate, max_seq_length, pad_idx)
         
         # MLM予測ヘッド
         self.mlm_head = MLMHead(hidden_size, vocab_size)
