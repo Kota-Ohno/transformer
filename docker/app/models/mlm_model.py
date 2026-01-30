@@ -8,7 +8,6 @@ from typing import Optional, Tuple
 
 from .encoder import Encoder
 from .layers import PositionalEncoding
-from ..utils.config import CONFIG
 
 
 class MLMHead(nn.Module):
