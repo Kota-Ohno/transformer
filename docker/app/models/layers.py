@@ -61,7 +61,7 @@ class PositionalEncoding(nn.Module):
         end_pos = offset + seq_len
         if end_pos > self.pe.size(1):
             raise ValueError(
-                f"位置エンコーディングの範囲 ({offset} から {end_pos}) が最大シーケンス長 ({self.pe.size(1)}) を超えています"
+                f"position encoding range ({offset} to {end_pos}) exceeds max sequence length ({self.pe.size(1)})"
             )
         # オフセットを考慮して位置エンコーディングを加算
         x = x + self.pe[:, offset:end_pos]

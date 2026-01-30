@@ -263,14 +263,23 @@ if __name__ == "__main__":
         rc = main()
         sys.exit(rc)
     except KeyboardInterrupt:
-        # ロギングが設定されているか確認し、適切な出力方法を選択
         msg = "ユーザーによって中断されました"
-        if logging.getLogger().hasHandlers():
+        if logging.getLogger().handlers:
             logging.info(msg)
         else:
             print(msg)
         sys.exit(130)  # SIGINT の標準的な終了コード
     except Exception as e:
-        logging.error(f"エラーが発生しました: {e}")
-        logging.error(traceback.format_exc())
+        root = logging.getLogger()
+        if not root.handlers:
+            try:
+                setup_logging()
+            except Exception:
+                logging.basicConfig(level=logging.INFO, format="%(levelname)s - %(message)s")
+        if logging.getLogger().handlers:
+            logging.error(f"エラーが発生しました: {e}")
+            logging.error(traceback.format_exc())
+        else:
+            print(f"エラーが発生しました: {e}", file=sys.stderr)
+            traceback.print_exc()
         sys.exit(1)

@@ -63,15 +63,25 @@ def pad_inner_seq(seq: List[int], pad_token: int, max_length: int) -> List[int]:
     else:
         return seq[:max_length]
 
-def flatten_and_convert(sequence: Any) -> List[int]:
+def flatten_and_convert(sequence: Any, strict: bool = False) -> List[int]:
     """
-    あらゆる形式のネストされた配列を平坦化し、すべての要素を整数に変換する関数
-    無効な値は0に変換される
+    あらゆる形式のネストされた配列を平坦化し、すべての要素を整数に変換する関数。
+    strict=False のとき無効な値は0に変換される。strict=True のとき無効な値で ValueError を送出する。
+
+    Args:
+        sequence: 平坦化するネストされたシーケンス。
+        strict: True の場合、無効な要素で ValueError を送出する。デフォルトは False。
+
+    Returns:
+        整数の平坦化リスト。
+
+    Raises:
+        ValueError: strict=True かつ無効な要素があった場合（項目・型・パス・元の例外を含む）。
     """
-    result = []
+    result: List[int] = []
     logger = logging.getLogger(__name__)
 
-    def _flatten(item, path: str = ""):
+    def _flatten(item: Any, path: str = "") -> None:
         if isinstance(item, (list, tuple)):
             for idx, subitem in enumerate(item):
                 new_path = f"{path}[{idx}]" if path else f"[{idx}]"
@@ -80,7 +90,12 @@ def flatten_and_convert(sequence: Any) -> List[int]:
             try:
                 result.append(int(item))
             except (ValueError, TypeError) as e:
-                # 警告ログを出力（ログレベルが有効な場合のみ）
+                if strict:
+                    raise ValueError(
+                        f"flatten_and_convert: 無効な値を検出しました（strict=True）。"
+                        f"項目: {item!r}, 型: {type(item).__name__}, "
+                        f"パス: {path if path else 'root'}, 元のエラー: {e}"
+                    ) from e
                 if logger.isEnabledFor(logging.WARNING):
                     logger.warning(
                         f"flatten_and_convert: 無効な値を検出しました。"
@@ -115,6 +130,15 @@ def collate_fn(batch: List[Tuple[Any, Any]], pad_token_id: int = 0) -> Tuple[tor
             "Cannot process empty batch. "
             "Please ensure the dataset contains at least one sample and batch_size > 0."
         )
+
+    # 各要素が長さ2のイテラブル（tuple/list）であることを検証
+    for i, item in enumerate(batch):
+        if not isinstance(item, (tuple, list)) or len(item) != 2:
+            length_repr = len(item) if isinstance(item, (tuple, list)) else "N/A"
+            raise ValueError(
+                f"batch[{i}] must be an iterable of length 2 (e.g. (x, y)), "
+                f"got {type(item).__name__} of length {length_repr}: {item!r}"
+            )
 
     # バッチからXとYのペアを取り出す
     X, Y = zip(*batch)

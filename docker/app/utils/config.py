@@ -664,7 +664,7 @@ class GlobalConfig:
                                 if success:
                                     setattr(target_obj, key, coerced_value)
                                 # 失敗時は既に警告がログに出力されている
-            except Exception as e:
+            except (json.JSONDecodeError, FileNotFoundError, PermissionError, OSError) as e:
                 logging.warning(f"Failed to load config from {config_path}: {e}")
 
     def _validate_and_fallback_device(self):

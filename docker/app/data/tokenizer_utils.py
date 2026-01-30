@@ -249,13 +249,15 @@ def normalize_text(text: str, lang: str, normalize_numeric: Optional[Union[str, 
     text = re.sub(r'\s+', ' ', text)
 
     # 数字の正規化
-    # replacement_tokenを決定: Trueの場合は'<NUM>'、文字列の場合はその文字列を使用
+    # replacement_token: 真偽値 True のみ '<NUM>'、非空の str のみカスタムトークンとして使用
     if normalize_numeric is True:
         replacement_token = '<NUM>'
-    elif normalize_numeric is not None and normalize_numeric is not False and normalize_numeric != '':
-        replacement_token = str(normalize_numeric)
+    elif isinstance(normalize_numeric, str) and normalize_numeric != '':
+        replacement_token = normalize_numeric
+    elif normalize_numeric is None or normalize_numeric is False:
+        replacement_token = None
     else:
-        # normalize_numeric が None または False または空文字列の場合は数字を置き換えない
+        # 数値0など未対応の型はカスタムトークンとして扱わない
         replacement_token = None
 
     if replacement_token is not None:

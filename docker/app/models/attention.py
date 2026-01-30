@@ -199,8 +199,8 @@ def prune_cache(cache, max_entries=MAX_CACHE_ENTRIES):
     Raises:
         ValueError: max_entries が正の整数でない場合
     """
-    # max_entries の検証（0以下や非整数を防ぐ）
-    if not isinstance(max_entries, int) or max_entries <= 0:
+    # max_entries の検証（0以下・非整数・bool を防ぐ；bool は int のサブクラスなので明示的に除外）
+    if type(max_entries) is not int or max_entries <= 0:
         raise ValueError("max_entries must be a positive integer")
 
     # OrderedDictを使用して順序情報を明示的に管理する
