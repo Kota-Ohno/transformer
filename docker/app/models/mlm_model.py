@@ -7,7 +7,6 @@ import math
 from typing import Optional, Tuple
 
 from models.encoder import Encoder
-from models.layers import PositionalEncoding
 
 
 class MLMHead(nn.Module):
@@ -72,29 +71,13 @@ class MLMModel(nn.Module):
         self.num_heads = num_heads
         self.pad_idx = pad_idx
         
-        # トークン埋め込み
-        self.token_embedding = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_idx)
-        
-        # 位置エンコーディング
-        self.positional_encoding = PositionalEncoding(hidden_size, max_seq_length)
-        
         # Transformer Encoder (vocab_size, d_model, num_heads, num_layers, d_ff, dropout, ...)
+        # Encoder内部に埋め込みと位置エンコーディングが含まれる
         self.encoder = Encoder(vocab_size, hidden_size, num_heads, num_layers, d_ff, dropout_rate, max_seq_length, pad_idx)
         
         # MLM予測ヘッド
         self.mlm_head = MLMHead(hidden_size, vocab_size)
         
-        # 重みの初期化
-        self._init_weights()
-        
-    def _init_weights(self):
-        """重みを初期化"""
-        # 埋め込み層の初期化
-        nn.init.normal_(self.token_embedding.weight, std=0.02)
-        if self.token_embedding.padding_idx is not None:
-            with torch.no_grad():
-                self.token_embedding.weight[self.token_embedding.padding_idx].fill_(0)
-    
     def forward(
         self, 
         input_ids: torch.Tensor,
@@ -111,8 +94,6 @@ class MLMModel(nn.Module):
         Returns:
             予測ロジット [batch_size, seq_len, vocab_size]
         """
-        batch_size, seq_len = input_ids.shape
-        
         # アテンションマスクの作成
         if attention_mask is None:
             # パディングトークンをマスク
@@ -121,14 +102,8 @@ class MLMModel(nn.Module):
             # [batch_size, seq_len] -> [batch_size, 1, 1, seq_len]
             attention_mask = attention_mask.unsqueeze(1).unsqueeze(2)
         
-        # トークン埋め込み
-        embedded = self.token_embedding(input_ids) * math.sqrt(self.hidden_size)
-        
-        # 位置エンコーディングを追加
-        encoded = self.positional_encoding(embedded)
-        
-        # Transformer Encoderを通過
-        encoder_output = self.encoder(encoded, attention_mask)
+        # Transformer Encoderを通過（内部で埋め込みと位置エンコーディングを実行）
+        encoder_output = self.encoder(input_ids, attention_mask)
         
         # MLMヘッドで予測
         logits = self.mlm_head(encoder_output)
