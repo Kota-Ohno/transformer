@@ -3,17 +3,15 @@ services:
     container_name: transformer
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.arm64
     volumes:
       - ./app:/src/
     ports:
       - "6000:6000"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - capabilities: [gpu]
-    shm_size: "256mb"
+    shm_size: "2gb"
     tty: true
+    stdin_open: true
     environment:
-      - WANDB_API_KEY=${WANDB_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY:-}
+      - TRANSFORMER_GLOBAL_DEVICE=cpu
+      - PYTHONPATH=/src

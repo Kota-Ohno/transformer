@@ -1,0 +1,97 @@
+import torch
+import torch.nn as nn
+import math
+import numbers
+
+class PositionalEncoding(nn.Module):
+    """位置エンコーディング"""
+
+    def __init__(self, d_model, max_seq_length=512):
+        super(PositionalEncoding, self).__init__()
+
+        # 位置エンコーディングの計算
+        pe = torch.zeros(max_seq_length, d_model)
+        position = torch.arange(0, max_seq_length, dtype=torch.float).unsqueeze(1)
+
+        # sin/cosペアで同じ周波数項を共有する標準的な実装
+        # ペアインデックス i = 0..(d_model//2 - 1) に対して div_term を計算
+        # 10000^(-2*i/d_model) を使用
+        # d_modelが奇数の場合もサポートするため、n_pairs = (d_model + 1) // 2 を使用
+        n_pairs = (d_model + 1) // 2
+        div_term = torch.exp(
+            torch.arange(0, n_pairs, dtype=torch.float) * (-math.log(10000.0) / d_model) * 2
+        )
+
+        # positionとdiv_termをブロードキャスト乗算
+        angle = position * div_term  # [max_seq_length, n_pairs]
+
+        # sin と cos を使って位置エンコーディングを作成
+        # sinを偶数インデックス、cosを奇数インデックスに割り当て
+        # d_modelが奇数の場合、最後のcos列は省略される
+        pe[:, 0::2] = torch.sin(angle)
+        pe[:, 1::2] = torch.cos(angle[:, :d_model // 2])
+
+        # バッチ次元を追加 [1, max_seq_length, d_model]
+        pe = pe.unsqueeze(0)
+
+        # モジュールのバッファとして登録 (パラメータではない)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x, offset=0):
+        """
+        入力テンソルに位置エンコーディングを加算
+
+        Args:
+            x: 入力テンソル [batch_size, seq_len, d_model]
+            offset: 位置エンコーディングの開始オフセット（デフォルト: 0）
+                    インクリメンタルデコーディング時に使用
+
+        Returns:
+            位置情報が加算されたテンソル [batch_size, seq_len, d_model]
+        """
+        # offsetの型と非負チェック
+        # isinstance(offset, numbers.Integral)を使用してnumpy/torch整数スカラーも受け入れる
+        # ただし、boolは明示的に除外（boolはnumbers.Integralのサブクラスだが、整数として扱うべきではない）
+        if isinstance(offset, bool) or not isinstance(offset, numbers.Integral):
+            raise TypeError(f"offset must be an integer, got {type(offset).__name__}")
+        if offset < 0:
+            raise ValueError(f"offset must be non-negative, got {offset}")
+
+        seq_len = x.size(1)
+        end_pos = offset + seq_len
+        if end_pos > self.pe.size(1):
+            raise ValueError(
+                f"position encoding range ({offset} to {end_pos}) exceeds max sequence length ({self.pe.size(1)})"
+            )
+        # オフセットを考慮して位置エンコーディングを加算
+        x = x + self.pe[:, offset:end_pos]
+        return x
+
+class FeedForward(nn.Module):
+    """フィードフォワードネットワーク"""
+
+    def __init__(self, d_model, d_ff, dropout=0.1):
+        super(FeedForward, self).__init__()
+
+        self.linear1 = nn.Linear(d_model, d_ff)
+        self.linear2 = nn.Linear(d_ff, d_model)
+        self.dropout = nn.Dropout(dropout)
+
+    def forward(self, x):
+        """
+        Args:
+            x: 入力テンソル [batch_size, seq_len, d_model]
+
+        Returns:
+            出力テンソル [batch_size, seq_len, d_model]
+        """
+        # 1つ目の線形層 + ReLU
+        x = torch.relu(self.linear1(x))
+
+        # ドロップアウトをReLUの後に適用
+        x = self.dropout(x)
+
+        # 2つ目の線形層
+        x = self.linear2(x)
+
+        return x

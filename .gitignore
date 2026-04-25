@@ -151,5 +151,19 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-./app/logs
-./app/logs/config
+# Project specific
+docker/app/logs/
+docker/app/wandb/
+docker/app/nltk_data/
+# Also ignore logs outside Docker structure (for non-Docker development)
+app/logs/
+
+# Model files
+*.pth
+*.pt
+*.model
+*.vocab
+
+# Checkpoints
+checkpoints/
+Checkpoints/
